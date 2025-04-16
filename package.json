@@ -1,0 +1,48 @@
+{
+  "name": "chat-plus",
+  "displayName": "Le Chat+",
+  "version": "0.0.1",
+  "description": "Organiseur de conversations pour Mistral AI Chat",
+  "author": "Pastaga",
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build",
+    "package": "plasmo package"
+  },
+  "dependencies": {
+    "@plasmohq/storage": "^1.15.0",
+    "plasmo": "0.90.3",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "devDependencies": {
+    "@ianvs/prettier-plugin-sort-imports": "4.1.1",
+    "@types/chrome": "0.0.258",
+    "@types/node": "20.11.5",
+    "@types/react": "18.2.48",
+    "@types/react-dom": "18.2.18",
+    "prettier": "3.2.4",
+    "typescript": "5.3.3"
+  },
+  "manifest": {
+    "host_permissions": [
+      "https://chat.mistral.ai/*"
+    ],
+    "permissions": [
+      "storage",
+      "tabs",
+      "activeTab",
+      "scripting"
+    ],
+    "web_accessible_resources": [
+      {
+        "resources": ["assets/icon.png"],
+        "matches": ["https://chat.mistral.ai/*"]
+      }
+    ],
+    "action": {
+      "default_title": "Le Chat+ pour Mistral AI",
+      "default_popup": "popup.html"
+    }
+  }
+}
