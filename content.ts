@@ -29,6 +29,127 @@ interface Folder {
 // Initialisation du stockage
 const storage = new Storage()
 
+// Fonction pour détecter le thème actuel de la page Mistral
+async function detectAndSaveTheme() {
+  try {
+    // Vérifier si le thème sombre est appliqué en inspectant les couleurs CSS
+    let isDarkMode = false;
+    
+    // Vérifier l'attribut data-theme si présent
+    const htmlElement = document.documentElement;
+    if (htmlElement.getAttribute('data-theme') === 'dark') {
+      isDarkMode = true;
+    } else {
+      // Sinon, tester la couleur de fond ou de texte
+      const bodyStyle = window.getComputedStyle(document.body);
+      const backgroundColor = bodyStyle.backgroundColor;
+      
+      // Si la couleur de fond est foncée (RGB < 50), considérer comme thème sombre
+      if (backgroundColor) {
+        const rgb = backgroundColor.match(/\d+/g);
+        if (rgb && rgb.length >= 3) {
+          const [r, g, b] = rgb.map(Number);
+          // Si la luminosité est faible, c'est un thème sombre
+          const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+          isDarkMode = brightness < 125;
+        }
+      }
+    }
+    
+    // Stocker le résultat dans chrome.storage.local
+    chrome.storage.local.set({ "pageIsDarkMode": isDarkMode }, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Erreur lors de la sauvegarde du thème:", chrome.runtime.lastError);
+      } else {
+        console.log("Le Chat+: Thème détecté et sauvegardé dans chrome.storage.local:", isDarkMode ? "Sombre" : "Clair");
+      }
+    });
+    
+    // Envoyer directement un message au popup
+    chrome.runtime.sendMessage({
+      action: "themeChanged",
+      isDarkMode: isDarkMode
+    }, (response) => {
+      if (chrome.runtime.lastError) {
+        // Ignorer l'erreur si le popup n'est pas ouvert
+        console.log("Le Chat+: Message de thème envoyé, mais aucun destinataire (normal si popup fermé)");
+      } else if (response) {
+        console.log("Le Chat+: Message de thème reçu par le popup:", response);
+      }
+    });
+    
+    return isDarkMode;
+  } catch (error) {
+    console.error("Erreur lors de la détection du thème:", error);
+    return false;
+  }
+}
+
+// Détecter le thème au chargement initial
+setTimeout(detectAndSaveTheme, 1000);
+
+// Observer les changements de thème sur la page
+const themeObserver = new MutationObserver((mutations) => {
+  // Vérifier si c'est un changement qui pourrait affecter le thème
+  for (const mutation of mutations) {
+    if (
+      mutation.type === 'attributes' && 
+      (mutation.attributeName === 'data-theme' || mutation.attributeName === 'class')
+    ) {
+      // Attendre un court délai pour que les styles soient appliqués
+      setTimeout(detectAndSaveTheme, 300);
+      break;
+    }
+  }
+});
+
+// Observer les attributs HTML et les changements de classe qui pourraient indiquer un changement de thème
+themeObserver.observe(document.documentElement, { 
+  attributes: true,
+  attributeFilter: ['data-theme', 'class'] 
+});
+
+// Écouteur de messages pour répondre aux demandes du popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log("Le Chat+: Message reçu du popup:", message);
+  
+  if (message.action === "getTheme") {
+    // Détecter et envoyer le thème actuel
+    detectAndSaveTheme().then(isDarkMode => {
+      console.log("Le Chat+: Envoi du thème actuel au popup:", isDarkMode ? "Sombre" : "Clair");
+      sendResponse({
+        action: "themeInfo",
+        isDarkMode: isDarkMode,
+        success: true
+      });
+    }).catch(error => {
+      console.error("Le Chat+: Erreur lors de la détection du thème:", error);
+      sendResponse({
+        action: "themeInfo", 
+        error: "Erreur de détection",
+        success: false
+      });
+    });
+    
+    // Garder le canal de communication ouvert pour la réponse asynchrone
+    return true;
+  }
+  
+  if (message.action === "refreshFolders") {
+    console.log("Le Chat+: Demande de rafraîchissement des dossiers reçue");
+    renderFolders().then(() => {
+      sendResponse({ success: true });
+    }).catch(error => {
+      console.error("Le Chat+: Erreur lors du rafraîchissement des dossiers:", error);
+      sendResponse({ success: false, error: String(error) });
+    });
+    return true;
+  }
+  
+  // Pour les autres messages
+  return false;
+});
+
 // Script de contenu pour interagir avec la page web de Mistral AI Chat
 console.log("Le Chat+ Extension activée sur cette page Mistral AI")
 
@@ -167,7 +288,7 @@ function injectStyles() {
       opacity: 0.6;
     }
     
-   
+    
     
    
     
@@ -954,6 +1075,62 @@ async function injectFoldersUI() {
   folderTitle.appendChild(folderIcon);
   folderTitle.appendChild(titleText);
   
+  // Conteneur pour les boutons d'action (à droite)
+  const buttonsContainer = document.createElement('div');
+  safeSetStyle(buttonsContainer, 'display', 'flex');
+  safeSetStyle(buttonsContainer, 'alignItems', 'center');
+  
+  // Bouton de rafraîchissement
+  const refreshButton = document.createElement('button');
+  refreshButton.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M23 4v6h-6"></path>
+    <path d="M1 20v-6h6"></path>
+    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"></path>
+    <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"></path>
+  </svg>`;
+  refreshButton.title = 'Rafraîchir les dossiers';
+  safeSetStyle(refreshButton, 'background', 'transparent');
+  safeSetStyle(refreshButton, 'color', 'var(--text-color-subtle)');
+  safeSetStyle(refreshButton, 'border', '1px solid transparent');
+  safeSetStyle(refreshButton, 'borderRadius', '4px');
+  safeSetStyle(refreshButton, 'width', '16px');
+  safeSetStyle(refreshButton, 'height', '16px');
+  safeSetStyle(refreshButton, 'display', 'flex');
+  safeSetStyle(refreshButton, 'alignItems', 'center');
+  safeSetStyle(refreshButton, 'justifyContent', 'center');
+  safeSetStyle(refreshButton, 'cursor', 'pointer');
+  safeSetStyle(refreshButton, 'fontWeight', 'normal');
+  safeSetStyle(refreshButton, 'fontSize', '12px');
+  safeSetStyle(refreshButton, 'transition', 'all 0.2s');
+  safeSetStyle(refreshButton, 'boxShadow', 'none');
+  safeSetStyle(refreshButton, 'marginRight', '3px');
+  
+  // Bouton pour fermer tous les dossiers
+  const collapseAllButton = document.createElement('button');
+  collapseAllButton.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="19 15 12 8 5 15"></polyline>
+  </svg>`;
+  collapseAllButton.title = 'Fermer tous les dossiers';
+  safeSetStyle(collapseAllButton, 'background', 'var(--background-color-badge-gray)');
+  safeSetStyle(collapseAllButton, 'color', 'var(--text-color-subtle)');
+  safeSetStyle(collapseAllButton, 'border', '1px solid var(--background-color-badge-gray)');
+  safeSetStyle(collapseAllButton, 'borderRadius', '4px');
+  safeSetStyle(collapseAllButton, 'width', '16px');
+  safeSetStyle(collapseAllButton, 'height', '16px');
+  safeSetStyle(collapseAllButton, 'display', 'flex');
+  safeSetStyle(collapseAllButton, 'alignItems', 'center');
+  safeSetStyle(collapseAllButton, 'justifyContent', 'center');
+  safeSetStyle(collapseAllButton, 'cursor', 'pointer');
+  safeSetStyle(collapseAllButton, 'fontWeight', 'normal');
+  safeSetStyle(collapseAllButton, 'fontSize', '12px');
+  safeSetStyle(collapseAllButton, 'transition', 'all 0.2s');
+  safeSetStyle(collapseAllButton, 'boxShadow', 'none');
+  safeSetStyle(collapseAllButton, 'marginRight', '3px');
+  
+  // Ajouter les boutons dans l'ordre souhaité
+  buttonsContainer.appendChild(refreshButton);
+  buttonsContainer.appendChild(collapseAllButton);
+  
   const addFolderButton = document.createElement('button');
   addFolderButton.innerHTML = '+';
   addFolderButton.title = 'Ajouter un dossier';
@@ -961,19 +1138,22 @@ async function injectFoldersUI() {
   safeSetStyle(addFolderButton, 'color', 'var(--text-color-subtle)');
   safeSetStyle(addFolderButton, 'border', '1px solid var(--background-color-badge-gray)');
   safeSetStyle(addFolderButton, 'borderRadius', '4px');
-  safeSetStyle(addFolderButton, 'width', '20px');
-  safeSetStyle(addFolderButton, 'height', '20px');
+  safeSetStyle(addFolderButton, 'width', '16px');
+  safeSetStyle(addFolderButton, 'height', '16px');
   safeSetStyle(addFolderButton, 'display', 'flex');
   safeSetStyle(addFolderButton, 'alignItems', 'center');
   safeSetStyle(addFolderButton, 'justifyContent', 'center');
   safeSetStyle(addFolderButton, 'cursor', 'pointer');
   safeSetStyle(addFolderButton, 'fontWeight', 'normal');
-  safeSetStyle(addFolderButton, 'fontSize', '16px');
+  safeSetStyle(addFolderButton, 'fontSize', '12px');
   safeSetStyle(addFolderButton, 'transition', 'all 0.2s');
   safeSetStyle(addFolderButton, 'boxShadow', 'none');
   
+  // Ajouter le bouton + au conteneur de boutons
+  buttonsContainer.appendChild(addFolderButton);
+  
   folderHeader.appendChild(folderTitle);
-  folderHeader.appendChild(addFolderButton);
+  folderHeader.appendChild(buttonsContainer);
   foldersSection.appendChild(folderHeader);
   
   // Conteneur pour la liste des dossiers
@@ -1044,6 +1224,40 @@ async function injectFoldersUI() {
       await createFolder(folderName);
       await renderFolders();
     }
+  });
+  
+  // Ajouter gestionnaire d'événements pour le bouton de rafraîchissement
+  refreshButton.addEventListener('click', async () => {
+    // Ajouter un effet visuel de rotation pendant le rafraîchissement
+    refreshButton.style.transform = 'rotate(360deg)';
+    refreshButton.style.transition = 'transform 0.5s';
+    
+    // Rafraîchir les dossiers
+    await renderFolders();
+    
+    // Après 500ms, réinitialiser la rotation pour la prochaine utilisation
+    setTimeout(() => {
+      refreshButton.style.transform = '';
+      refreshButton.style.transition = '';
+    }, 500);
+  });
+  
+  // Ajouter gestionnaire d'événements pour le bouton de fermeture de tous les dossiers
+  collapseAllButton.addEventListener('click', async () => {
+    // Obtenir tous les dossiers
+    const folders = await getFolders();
+    
+    // Mettre à jour tous les dossiers pour les fermer
+    const updatedFolders = folders.map(folder => ({
+      ...folder,
+      expanded: false
+    }));
+    
+    // Sauvegarder l'état fermé
+    await storage.set('folders', updatedFolders);
+    
+    // Rafraîchir l'affichage
+    await renderFolders();
   });
   
   console.log("Interface des dossiers injectée avec succès");
@@ -2158,7 +2372,7 @@ function setupFolderConversationsDragAndDrop() {
                 await addConversationToFolder(targetFolderId, conversationData);
                 
                 // Retirer la classe après un délai
-                setTimeout(() => {
+    setTimeout(() => {
                   if (currentTargetFolder) {
                     currentTargetFolder.classList.remove('drop-success');
                   }
