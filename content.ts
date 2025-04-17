@@ -32,10 +32,16 @@ const storage = new Storage()
 // Script de contenu pour interagir avec la page web de Mistral AI Chat
 console.log("Le Chat+ Extension activée sur cette page Mistral AI")
 
+// Réinitialiser l'état de chargement initial à chaque chargement de page
+window.addEventListener('beforeunload', () => {
+  if (renderFolders.hasOwnProperty('initialRenderDone')) {
+    delete (renderFolders as any).initialRenderDone;
+  }
+});
+
 // Variables pour le drag and drop
 let draggedConversationId = null;
 let draggedConversationElement = null;
-let dragOverlay = null;
 let isDragging = false;
 let dragIndicator = null;
 
@@ -94,6 +100,22 @@ function injectStyles() {
       border: 1px solid rgba(0, 128, 0, 0.2);
     }
     
+    .folder-name {
+      user-select: none;
+      cursor: inherit;
+    }
+    
+    .folder-name[contenteditable="true"] {
+      user-select: text;
+      cursor: text;
+      min-width: 30px;
+    }
+    
+    .folder-name:focus {
+      outline: none;
+      background-color: rgba(0, 0, 0, 0.05);
+    }
+    
     .le-chat-plus-conversation-item {
       display: flex;
       align-items: center;
@@ -107,25 +129,55 @@ function injectStyles() {
       background-color: var(--background-color-muted);
     }
     
+    .le-chat-plus-conversation-item.active-conversation {
+      background-color: rgba(0, 0, 0, 0.05);
+      opacity: 1 !important;
+    }
+    
+    .le-chat-plus-conversation-item.active-conversation a {
+      opacity: 1 !important;
+    }
+    
     .mistral-conversation-item {
-      cursor: grab;
+      cursor: pointer;
     }
     
     .mistral-conversation-item.dragging {
       opacity: 0.4;
-      cursor: grabbing;
+      cursor: pointer;
     }
     
-    /* Styles pour masquer l'overlay pendant le drag */
-    .drag-active-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: transparent;
-      z-index: 9999;
-      pointer-events: none;
+  
+    
+    /* Styles pour l'indicateur de position lors du drag and drop dans un dossier */
+    .reorder-indicator {
+      height: 1px;
+      background-color: var(--text-color-subtle, #666);
+      margin: 2px 0;
+      opacity: 0;
+      transition: opacity 0.2s;
+      position: relative;
+      width: 10%;
+      height: 2px;
+    }
+    
+  
+    
+    .reorder-indicator.visible {
+      opacity: 0.6;
+    }
+    
+   
+    
+   
+    
+    .folder-conversation-draggable {
+      cursor: pointer;
+    }
+    
+    .folder-conversation-draggable.dragging {
+      cursor: pointer;
+      background-color: rgba(0, 0, 0, 0.02);
     }
     
     /* Modal pour création et confirmation */
@@ -369,10 +421,10 @@ function showModal(options: {
 // Fonction pour afficher un modal de création de dossier
 function showFolderCreateModal(): Promise<string | null> {
   return showModal({
-    title: 'Créer un nouveau dossier',
-    inputPlaceholder: 'Nom du dossier',
-    confirmLabel: 'Créer',
-    cancelLabel: 'Annuler'
+    title: "Créer un nouveau dossier",
+    inputPlaceholder: "Nom du dossier",
+    confirmLabel: "Créer",
+    cancelLabel: "Annuler"
   }) as Promise<string | null>;
 }
 
@@ -415,24 +467,35 @@ function setupDragAndDropForConversations() {
       draggedConversationId = conversationId;
       draggedConversationElement = item;
       
+      // Variables pour le drag and drop avec positionnement
+      let currentDropTarget = null;
+      let targetPosition = -1;
+      let reorderIndicator = null;
+      
       // Créer une copie visuelle de l'élément pour le drag
       const rect = item.getBoundingClientRect();
       dragIndicator = document.createElement('div');
       dragIndicator.className = 'conversation-drag-clone';
-      dragIndicator.innerHTML = item.innerHTML;
+      dragIndicator.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+      </svg>`;
       dragIndicator.style.position = 'fixed';
       dragIndicator.style.zIndex = '10000';
       dragIndicator.style.background = 'rgba(255, 255, 255, 0.25)';
       dragIndicator.style.border = '1px solid rgba(221, 221, 221, 0.3)';
       dragIndicator.style.borderRadius = '4px';
-      dragIndicator.style.padding = '8px';
-      dragIndicator.style.width = `${rect.width}px`;
+      dragIndicator.style.padding = '6px';
+      dragIndicator.style.width = 'auto';
+      dragIndicator.style.height = 'auto';
       dragIndicator.style.pointerEvents = 'none';
       dragIndicator.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
       dragIndicator.style.opacity = '0';
       dragIndicator.style.transition = 'opacity 0.15s';
       dragIndicator.style.color = 'rgba(51, 51, 51, 0.7)';
-      dragIndicator.style.fontSize = '12px';
+      dragIndicator.style.display = 'flex';
+      dragIndicator.style.alignItems = 'center';
+      dragIndicator.style.justifyContent = 'center';
       document.body.appendChild(dragIndicator);
       
       // Position initiale
@@ -451,7 +514,7 @@ function setupDragAndDropForConversations() {
       const conversationData = {
         id: conversationId,
         title: item.textContent?.trim() || 'Conversation sans titre',
-        url: window.location.origin + href
+        url: href.startsWith('/') ? window.location.origin + href : href
       };
       
       window.addEventListener('mousemove', handleMouseMove);
@@ -482,20 +545,76 @@ function setupDragAndDropForConversations() {
         if (isDragging) {
           updateDragIndicatorPosition(moveEvent);
           
+          // Nettoyer les indicateurs de réorganisation précédents
+          if (reorderIndicator && reorderIndicator.parentNode) {
+            reorderIndicator.parentNode.removeChild(reorderIndicator);
+            reorderIndicator = null;
+          }
+          
+          // Nettoyer les classes drag-over
+          document.querySelectorAll('.drag-over, .drag-over-top, .drag-over-bottom').forEach(el => {
+            el.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
+          });
+          
           // Trouver l'élément sous le curseur
           const elementsUnderCursor = document.elementsFromPoint(moveEvent.clientX, moveEvent.clientY);
+          
+          // Chercher un en-tête de dossier ou une conversation dans un dossier
           const folderHeader = elementsUnderCursor.find(el => 
             el.classList && el.classList.contains('le-chat-plus-folder-header')
           );
           
-          // Nettoyer les classes drag-over
-          document.querySelectorAll('.drag-over').forEach(el => {
-            el.classList.remove('drag-over');
-          });
+          const folderConversation = elementsUnderCursor.find(el => 
+            el.classList && el.classList.contains('le-chat-plus-conversation-item')
+          ) as HTMLElement | undefined;
           
-          // Ajouter la classe drag-over
+          // Si on survole un en-tête de dossier
           if (folderHeader) {
             folderHeader.classList.add('drag-over');
+            // Effet visuel sobre sur le clone
+            dragIndicator.style.boxShadow = '0 2px 10px rgba(0,0,0,0.08)';
+            dragIndicator.style.borderColor = 'rgba(176, 176, 176, 0.4)';
+            dragIndicator.style.background = 'rgba(255, 255, 255, 0.35)';
+            
+            // Réinitialiser les variables de position
+            currentDropTarget = null;
+            targetPosition = -1;
+          } 
+          // Si on survole une conversation dans un dossier
+          else if (folderConversation) {
+            // Obtenir les dimensions de l'élément cible
+            const targetRect = folderConversation.getBoundingClientRect();
+            const middleY = targetRect.top + targetRect.height / 2;
+            
+            // Trouver le dossier parent
+            const folderItem = folderConversation.closest('.le-chat-plus-folder-item');
+            const folderHeader = folderItem?.querySelector('.le-chat-plus-folder-header');
+            
+            if (folderHeader) {
+              folderHeader.classList.add('drag-over');
+            }
+            
+            // Déterminer si on survole la moitié supérieure ou inférieure
+            if (moveEvent.clientY < middleY) {
+              // Survol de la moitié supérieure
+              folderConversation.classList.add('drag-over-top');
+              // Créer un indicateur visuel au-dessus
+              reorderIndicator = createReorderIndicator(folderConversation, 'before');
+            } else {
+              // Survol de la moitié inférieure
+              folderConversation.classList.add('drag-over-bottom');
+              // Créer un indicateur visuel en-dessous
+              reorderIndicator = createReorderIndicator(folderConversation, 'after');
+            }
+            
+            // Sauvegarder la conversation et calculer la position
+            currentDropTarget = folderConversation;
+            if (folderItem) {
+              const conversationsInFolder = Array.from(folderItem.querySelectorAll('.le-chat-plus-conversation-item'));
+              const targetIndex = conversationsInFolder.indexOf(folderConversation);
+              targetPosition = (moveEvent.clientY < middleY) ? targetIndex : targetIndex + 1;
+            }
+            
             // Effet visuel sobre sur le clone
             dragIndicator.style.boxShadow = '0 2px 10px rgba(0,0,0,0.08)';
             dragIndicator.style.borderColor = 'rgba(176, 176, 176, 0.4)';
@@ -519,7 +638,60 @@ function setupDragAndDropForConversations() {
             el.classList && el.classList.contains('le-chat-plus-folder-header')
           );
           
-          if (folderHeader) {
+          const folderConversation = elementsUnderCursor.find(el => 
+            el.classList && el.classList.contains('le-chat-plus-conversation-item')
+          ) as HTMLElement | undefined;
+          
+          // 1. Drop sur une conversation dans un dossier (à une position spécifique)
+          if (currentDropTarget && targetPosition !== -1) {
+            // Animation vers la position cible
+            if (reorderIndicator) {
+              const rect = reorderIndicator.getBoundingClientRect();
+              dragIndicator.style.transform = 'scale(0.9)';
+              dragIndicator.style.top = `${rect.top}px`;
+              dragIndicator.style.left = `${rect.left}px`;
+              dragIndicator.style.opacity = '0';
+            }
+            
+            // Trouver l'ID du dossier
+            const folderItem = currentDropTarget.closest('.le-chat-plus-folder-item');
+            if (folderItem) {
+              // Chercher l'en-tête du dossier pour l'effet visuel
+              const header = folderItem.querySelector('.le-chat-plus-folder-header');
+              if (header) {
+                header.classList.remove('drag-over');
+                header.classList.add('drop-success');
+              }
+              
+              // Trouver l'ID du dossier
+              const findFolderIdFromElement = async () => {
+                const folders = await getFolders();
+                const folderItems = document.querySelectorAll('.le-chat-plus-folder-item');
+                const folderIndex = Array.from(folderItems).indexOf(folderItem);
+                if (folderIndex >= 0 && folderIndex < folders.length) {
+                  return folders[folderIndex].id;
+                }
+                return null;
+              };
+              
+              // Exécuter le drop à la position spécifique
+              findFolderIdFromElement().then(folderId => {
+                if (folderId) {
+                  addConversationToFolder(folderId, conversationData, targetPosition);
+                  
+                  // Retirer la classe après un délai
+                  setTimeout(() => {
+                    const header = folderItem.querySelector('.le-chat-plus-folder-header');
+                    if (header) {
+                      header.classList.remove('drop-success');
+                    }
+                  }, 500);
+                }
+              });
+            }
+          }
+          // 2. Drop sur un en-tête de dossier (comportement d'origine)
+          else if (folderHeader) {
             // Animation vers le dossier cible
             const folderRect = folderHeader.getBoundingClientRect();
             dragIndicator.style.transform = 'scale(0.8)';
@@ -577,13 +749,18 @@ function setupDragAndDropForConversations() {
         window.removeEventListener('mouseup', handleMouseUp);
         
         // Nettoyer toutes les classes liées au drag
-        document.querySelectorAll('.drag-over').forEach(el => {
-          el.classList.remove('drag-over');
+        document.querySelectorAll('.drag-over, .drag-over-top, .drag-over-bottom').forEach(el => {
+          el.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
         });
         
         if (dragIndicator && dragIndicator.parentNode) {
           dragIndicator.parentNode.removeChild(dragIndicator);
           dragIndicator = null;
+        }
+        
+        // Nettoyer l'indicateur de réorganisation
+        if (reorderIndicator && reorderIndicator.parentNode) {
+          reorderIndicator.parentNode.removeChild(reorderIndicator);
         }
         
         if (draggedConversationElement) {
@@ -603,6 +780,26 @@ function setupDragAndDropForConversations() {
           dragIndicator.style.top = `${evt.clientY - 10}px`;
           dragIndicator.style.left = `${evt.clientX - dragIndicator.offsetWidth / 3}px`;
         }
+      }
+      
+      // Créer un indicateur visuel de position pour le réordonnancement
+      function createReorderIndicator(targetElement: HTMLElement, position: 'before' | 'after'): HTMLElement {
+        const indicator = document.createElement('div');
+        indicator.className = 'reorder-indicator visible';
+        
+        // Insérer l'indicateur avant ou après l'élément cible
+        if (position === 'before') {
+          targetElement.parentNode?.insertBefore(indicator, targetElement);
+        } else {
+          const nextElement = targetElement.nextElementSibling;
+          if (nextElement) {
+            targetElement.parentNode?.insertBefore(indicator, nextElement);
+          } else {
+            targetElement.parentNode?.appendChild(indicator);
+          }
+        }
+        
+        return indicator;
       }
     });
   });
@@ -782,7 +979,7 @@ async function injectFoldersUI() {
   // Conteneur pour la liste des dossiers
   const foldersList = document.createElement('div');
   foldersList.id = 'le-chat-plus-folders-list';
-  safeSetStyle(foldersList, 'maxHeight', '300px');
+  safeSetStyle(foldersList, 'maxHeight', '200px');
   safeSetStyle(foldersList, 'overflowY', 'auto');
   foldersSection.appendChild(foldersList);
   
@@ -854,7 +1051,35 @@ async function injectFoldersUI() {
 
 // Observer les mutations du DOM pour injecter notre UI quand la sidebar devient disponible
 function setupDOMObserver() {
+  // Une variable pour suivre si nous avons déjà injecté l'interface avec succès
+  let successfullyInjected = false;
+  let lastInjectionAttempt = 0;
+  const INJECTION_COOLDOWN = 2000; // 2 secondes entre les tentatives d'injection
+  
   const observer = new MutationObserver((mutations) => {
+    const now = Date.now();
+    
+    // Si nous avons récemment tenté une injection, ne pas réessayer tout de suite
+    if (now - lastInjectionAttempt < INJECTION_COOLDOWN) {
+      return;
+    }
+    
+    // Vérifier si nos dossiers existent et sont visibles
+    const foldersElement = document.getElementById('le-chat-plus-folders');
+    const isVisible = foldersElement && 
+                     window.getComputedStyle(foldersElement).display !== 'none' &&
+                     foldersElement.offsetParent !== null;
+    
+    // Si notre interface a déjà été injectée avec succès et qu'elle est toujours visible
+    if (successfullyInjected && isVisible) {
+      // Mettre à jour le drag and drop, mais ne pas réinjecter
+      setupDragAndDropForConversations();
+      return;
+    }
+    
+    // Si notre interface n'existe pas ou n'est plus visible, chercher la sidebar
+    let shouldInject = false;
+    
     // Chercher la sidebar dans les mutations
     for (const mutation of mutations) {
       if (mutation.type === 'childList' && mutation.addedNodes.length) {
@@ -863,27 +1088,45 @@ function setupDOMObserver() {
             // Vérifier si ce nœud ou ses enfants contiennent des liens de conversation
             const hasConversationLinks = node.querySelector('a[href^="/chat/"]');
             if (hasConversationLinks) {
-              // Trouvé! Injectons notre interface
-              injectFoldersUI();
-              return;
+              shouldInject = true;
+              break;
             }
           }
         }
       }
+      if (shouldInject) break;
     }
     
-    // Vérifier périodiquement si notre interface existe déjà
-    if (!document.getElementById('le-chat-plus-folders')) {
-      injectFoldersUI();
-    } else {
-      // Si notre interface existe, configurer le drag and drop
-      setupDragAndDropForConversations();
+    // Si la sidebar est trouvée ou si notre interface a disparu
+    if (shouldInject || (!isVisible && document.querySelector('a[href^="/chat/"]'))) {
+      lastInjectionAttempt = now;
+      
+      // Utiliser un délai pour s'assurer que la page a terminé ses modifications DOM
+      setTimeout(() => {
+        injectFoldersUI().then(() => {
+          successfullyInjected = true;
+        });
+      }, 500);
     }
   });
   
   // Observer tout le document
   observer.observe(document.body, { childList: true, subtree: true });
 }
+
+// Attendre que le DOM soit chargé pour injecter notre UI
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    // Attendre que la page Mistral AI ait terminé son chargement complet
+    setTimeout(injectFoldersUI, 1000); // Attendre 1 seconde après le chargement du DOM
+  });
+} else {
+  // Si le DOM est déjà chargé, attendre un peu pour que la page Mistral AI finisse de s'initialiser
+  setTimeout(injectFoldersUI, 1000);
+}
+
+// Configurer l'observateur pour surveiller les modifications du DOM
+setupDOMObserver();
 
 // Créer un nouveau dossier
 async function createFolder(name: string): Promise<void> {
@@ -908,7 +1151,7 @@ async function getFolders(): Promise<Folder[]> {
 }
 
 // Ajouter une conversation à un dossier
-async function addConversationToFolder(folderId: string, conversation: {id: string, title: string, url: string}): Promise<void> {
+async function addConversationToFolder(folderId: string, conversation: {id: string, title: string, url: string}, position?: number): Promise<void> {
   const folders = await getFolders();
   const folderIndex = folders.findIndex(f => f.id === folderId);
   if (folderIndex === -1) return;
@@ -917,7 +1160,17 @@ async function addConversationToFolder(folderId: string, conversation: {id: stri
   const conversations = await storage.get<ConversationRef[]>(`folder_conversations_${folderId}`) || [];
   
   // Vérifier si la conversation est déjà dans le dossier
-  if (conversations.some(c => c.id === conversation.id)) return;
+  const existingIndex = conversations.findIndex(c => c.id === conversation.id);
+  if (existingIndex !== -1) {
+    // Si la position est spécifiée et différente, déplacer la conversation
+    if (position !== undefined && position !== existingIndex) {
+      const [conversationToMove] = conversations.splice(existingIndex, 1);
+      conversations.splice(position, 0, conversationToMove);
+      await storage.set(`folder_conversations_${folderId}`, conversations);
+      await renderFolders();
+    }
+    return;
+  }
   
   // Ajouter la conversation au dossier
   const newConversation: ConversationRef = {
@@ -927,7 +1180,13 @@ async function addConversationToFolder(folderId: string, conversation: {id: stri
     addedAt: Date.now()
   };
   
+  // Insérer à la position spécifiée ou à la fin
+  if (position !== undefined && position >= 0 && position <= conversations.length) {
+    conversations.splice(position, 0, newConversation);
+  } else {
   conversations.push(newConversation);
+  }
+  
   await storage.set(`folder_conversations_${folderId}`, conversations);
   
   // Mettre à jour le compteur
@@ -988,7 +1247,8 @@ async function toggleFolderExpand(folderId: string): Promise<void> {
   const folderItem = Array.from(folderItems)[folderIndex];
   
   if (folderItem) {
-    const conversationsContainer = folderItem.querySelector('.le-chat-plus-folder-conversations');
+    // Correction du sélecteur - utiliser le-chat-plus-folder-content au lieu de le-chat-plus-folder-conversations
+    const conversationsContainer = folderItem.querySelector('.le-chat-plus-folder-content');
     const expandIcon = folderItem.querySelector('.le-chat-plus-folder-header span:first-child');
     
     if (conversationsContainer) {
@@ -1021,6 +1281,27 @@ async function renderFolders(): Promise<void> {
   foldersList.innerHTML = '';
   
   const folders = await getFolders();
+  
+  // S'assurer que tous les dossiers sont fermés au chargement initial de la page
+  // Utiliser une variable statique pour suivre si c'est le premier rendu depuis le chargement de la page
+  if (!renderFolders.hasOwnProperty('initialRenderDone')) {
+    // Première exécution après le chargement de la page, fermer tous les dossiers
+    const foldersWithUpdatedState = folders.map(folder => ({
+      ...folder,
+      expanded: false
+    }));
+    
+    // Sauvegarder l'état fermé
+    await storage.set('folders', foldersWithUpdatedState);
+    
+    // Mettre à jour les folders locaux pour le rendu actuel
+    folders.forEach(folder => {
+      folder.expanded = false;
+    });
+    
+    // Marquer comme fait pour ne pas répéter à chaque appel de renderFolders
+    (renderFolders as any).initialRenderDone = true;
+  }
   
   if (folders.length === 0) {
     const emptyMessage = document.createElement('div');
@@ -1056,10 +1337,123 @@ async function renderFolders(): Promise<void> {
     // Nom du dossier
     const folderName = document.createElement('span');
     folderName.textContent = `${folder.name}`;
+    folderName.className = 'folder-name';
     safeSetStyle(folderName, 'flex', '1');
     safeSetStyle(folderName, 'fontWeight', 'normal');
     safeSetStyle(folderName, 'fontSize', '13px');
     safeSetStyle(folderName, 'color', 'var(--text-color-subtle)');
+    safeSetStyle(folderName, 'cursor', 'inherit'); // Hériter le curseur du parent (qui est pointer pour le header)
+    safeSetStyle(folderName, 'padding', '2px');
+    safeSetStyle(folderName, 'border-radius', '3px');
+    safeSetStyle(folderName, 'transition', 'background-color 0.2s');
+    
+    // Fonction pour activer l'édition directe du nom
+    const makeNameEditable = (e: MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault(); // Arrêter le comportement par défaut
+      
+      // Empêcher le toggle du dossier pendant l'édition
+      if (folderName.getAttribute('contenteditable') === 'true') {
+        return; // Déjà en mode édition
+      }
+      
+      // Rendre le texte éditable
+      folderName.setAttribute('contenteditable', 'true');
+      folderName.focus();
+      
+      // Utiliser le curseur text pour l'édition
+      safeSetStyle(folderName, 'cursor', 'text');
+      
+      // Sélectionner tout le texte
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(folderName);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      
+      // Style en mode édition
+      safeSetStyle(folderName, 'background-color', 'rgba(0, 0, 0, 0.05)');
+      safeSetStyle(folderName, 'outline', 'none');
+      
+      // Enregistrer le contenu original pour annulation
+      const originalName = folderName.textContent || '';
+      
+      // Arrêter la propagation des événements de souris pendant l'édition
+      const stopEventPropagation = (e: Event) => {
+        e.stopPropagation();
+      };
+      
+      folderName.addEventListener('mousedown', stopEventPropagation);
+      folderName.addEventListener('click', stopEventPropagation);
+      
+      // Gérer la validation par la touche Entrée
+      const handleEnterKey = (e: KeyboardEvent) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          folderName.blur(); // Déclenche l'événement blur qui validera
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          folderName.textContent = originalName;
+          folderName.blur();
+        }
+      };
+      
+      // Valider le nouveau nom quand on perd le focus
+      const handleBlur = async () => {
+        folderName.removeEventListener('keydown', handleEnterKey);
+        folderName.removeEventListener('blur', handleBlur);
+        folderName.removeEventListener('mousedown', stopEventPropagation);
+        folderName.removeEventListener('click', stopEventPropagation);
+        
+        // Désactiver l'édition
+        folderName.setAttribute('contenteditable', 'false');
+        safeSetStyle(folderName, 'background-color', 'transparent');
+        
+        // Rétablir le curseur normal
+        safeSetStyle(folderName, 'cursor', 'inherit');
+        
+        // Récupérer le nouveau nom
+        const newName = folderName.textContent?.trim();
+        
+        // Si le nom a changé et n'est pas vide
+        if (newName && newName !== originalName && newName.length > 0) {
+          await renameFolder(folder.id, newName);
+        } else {
+          // Restaurer le nom original si vide ou annulé
+          folderName.textContent = originalName;
+        }
+      };
+      
+      folderName.addEventListener('keydown', handleEnterKey);
+      folderName.addEventListener('blur', handleBlur);
+    };
+    
+    // Ajouter la possibilité d'éditer en double-cliquant sur le nom
+    folderName.addEventListener('dblclick', makeNameEditable);
+    
+    // Conteneur pour les boutons d'action (renommer et supprimer)
+    const actionsContainer = document.createElement('div');
+    actionsContainer.className = 'folder-actions';
+    safeSetStyle(actionsContainer, 'opacity', '0');
+    safeSetStyle(actionsContainer, 'transition', 'opacity 0.2s');
+    safeSetStyle(actionsContainer, 'display', 'flex');
+    
+    // Bouton de renommage
+    const renameButton = document.createElement('button');
+    renameButton.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+    </svg>`;
+    safeSetStyle(renameButton, 'background', 'none');
+    safeSetStyle(renameButton, 'border', 'none');
+    safeSetStyle(renameButton, 'color', 'var(--text-color-subtle)');
+    safeSetStyle(renameButton, 'cursor', 'pointer');
+    safeSetStyle(renameButton, 'padding', '2px 5px');
+    safeSetStyle(renameButton, 'opacity', '0.7');
+    safeSetStyle(renameButton, 'transition', 'opacity 0.2s');
+    safeSetStyle(renameButton, 'display', 'flex');
+    safeSetStyle(renameButton, 'alignItems', 'center');
+    renameButton.title = 'Renommer ce dossier';
     
     // Bouton de suppression
     const deleteButton = document.createElement('button');
@@ -1075,10 +1469,23 @@ async function renderFolders(): Promise<void> {
     safeSetStyle(deleteButton, 'transition', 'opacity 0.2s');
     deleteButton.title = 'Supprimer ce dossier';
     
+    // Ajouter les boutons au conteneur d'actions
+    actionsContainer.appendChild(renameButton);
+    actionsContainer.appendChild(deleteButton);
+    
     folderHeader.appendChild(expandIcon);
     folderHeader.appendChild(folderName);
-    folderHeader.appendChild(deleteButton);
+    folderHeader.appendChild(actionsContainer);
     folderItem.appendChild(folderHeader);
+    
+    // Ajouter l'événement de survol pour afficher les boutons
+    folderHeader.addEventListener('mouseenter', () => {
+      safeSetStyle(actionsContainer, 'opacity', '1');
+    });
+    
+    folderHeader.addEventListener('mouseleave', () => {
+      safeSetStyle(actionsContainer, 'opacity', '0');
+    });
     
     // Événements de drag and drop sur le dossier
     folderHeader.addEventListener('dragover', (e: DragEvent) => {
@@ -1119,9 +1526,11 @@ async function renderFolders(): Promise<void> {
       }
     });
     
+    // Reste du code pour les conversations...
+    
     // Conteneur pour les conversations du dossier
     const conversationsContainer = document.createElement('div');
-    conversationsContainer.className = 'le-chat-plus-folder-conversations';
+    conversationsContainer.className = 'le-chat-plus-folder-content';
     safeSetStyle(conversationsContainer, 'paddingLeft', '15px');
     safeSetStyle(conversationsContainer, 'display', folder.expanded ? 'block' : 'none');
     
@@ -1145,6 +1554,7 @@ async function renderFolders(): Promise<void> {
         convLink.href = conv.url;
         safeSetStyle(convLink, 'flex', '1');
         safeSetStyle(convLink, 'textDecoration', 'none');
+        safeSetStyle(convLink, 'cursor', 'pointer');
         
         // Appliquer la couleur en fonction de si la conversation est active ou non
         if (isActive) {
@@ -1159,30 +1569,63 @@ async function renderFolders(): Promise<void> {
         safeSetStyle(convLink, 'overflow', 'hidden');
         safeSetStyle(convLink, 'textOverflow', 'ellipsis');
         
-        // Empêcher le comportement par défaut du lien pour éviter le rechargement
+        // Variables pour gérer le clic et le double-clic
+        let clickTimer: number = 0;
+        let isDoubleClick = false;
+        
+        // Empêcher le comportement par défaut du lien et gérer la navigation avec notre propre gestionnaire
         convLink.addEventListener('click', (e) => {
           e.preventDefault();
           
-          // Utiliser l'API History pour naviguer sans rechargement
-          const url = new URL(conv.url);
-          const path = url.pathname;
+          // Si nous sommes en mode édition, ne rien faire
+          if (convLink.getAttribute('contenteditable') === 'true') {
+            return;
+          }
           
-          // Trouver les liens de conversation natifs
-          const sidebarLinks = Array.from(document.querySelectorAll('a[href^="/chat/"]'));
-          const matchingLink = sidebarLinks.find(link => link.getAttribute('href') === path);
+          // Si c'est un double clic, ne pas naviguer (l'événement dblclick s'en chargera)
+          if (isDoubleClick) {
+            isDoubleClick = false;
+            return;
+          }
           
-          if (matchingLink) {
-            // Si un lien natif correspondant existe, simuler un clic dessus
-            (matchingLink as HTMLElement).click();
+          // Utiliser un timer pour différencier clic simple et double-clic
+          if (clickTimer) {
+            // Déjà un clic en attente, c'est un double-clic
+            clearTimeout(clickTimer);
+            clickTimer = 0;
+            isDoubleClick = true;
           } else {
-            // Sinon, utiliser l'API History
-            window.history.pushState({}, '', path);
-            
-            // Déclencher un événement de changement d'URL pour que l'application réagisse
-            const navEvent = new PopStateEvent('popstate');
-            window.dispatchEvent(navEvent);
+            // Premier clic, attendre pour voir si un second suit
+            clickTimer = window.setTimeout(() => {
+              clickTimer = 0;
+              if (!isDoubleClick) {
+                // C'était un clic simple, naviguer
+                handleConvLinkClick(e, conv, convLink as HTMLElement);
+              }
+            }, 250); // Délai de détection du double-clic
           }
         });
+        
+        // Conteneur pour les boutons d'action
+        const actionsContainer = document.createElement('div');
+        actionsContainer.className = 'conversation-actions';
+        safeSetStyle(actionsContainer, 'display', 'flex');
+        safeSetStyle(actionsContainer, 'opacity', '0');
+        safeSetStyle(actionsContainer, 'transition', 'opacity 0.2s');
+        
+        // Bouton pour éditer le nom de la conversation
+        const editButton = document.createElement('button');
+        editButton.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        </svg>`;
+        safeSetStyle(editButton, 'background', 'none');
+        safeSetStyle(editButton, 'border', 'none');
+        safeSetStyle(editButton, 'color', '#999');
+        safeSetStyle(editButton, 'cursor', 'pointer');
+        safeSetStyle(editButton, 'padding', '2px');
+        safeSetStyle(editButton, 'marginRight', '2px');
+        editButton.title = 'Renommer la conversation';
         
         // Bouton pour supprimer la conversation du dossier
         const removeButton = document.createElement('button');
@@ -1193,52 +1636,186 @@ async function renderFolders(): Promise<void> {
         safeSetStyle(removeButton, 'cursor', 'pointer');
         safeSetStyle(removeButton, 'padding', '2px');
         safeSetStyle(removeButton, 'fontSize', '12px');
-        safeSetStyle(removeButton, 'opacity', '0.6');
-        safeSetStyle(removeButton, 'transition', 'opacity 0.2s');
         removeButton.title = 'Retirer du dossier';
         
+        // Ajouter les boutons au conteneur d'actions
+        actionsContainer.appendChild(editButton);
+        actionsContainer.appendChild(removeButton);
+        
         convItem.appendChild(convLink);
-        convItem.appendChild(removeButton);
+        convItem.appendChild(actionsContainer);
         conversationsContainer.appendChild(convItem);
         
+        // Afficher les boutons d'action au survol
+        convItem.addEventListener('mouseenter', () => {
+          safeSetStyle(actionsContainer, 'opacity', '0.6');
+        });
+        
+        convItem.addEventListener('mouseleave', () => {
+          safeSetStyle(actionsContainer, 'opacity', '0');
+        });
+        
+        // Fonction pour activer l'édition directe du nom d'une conversation
+        const makeConvNameEditable = (e: MouseEvent) => {
+          e.stopPropagation();
+          e.preventDefault(); // Arrêter le comportement par défaut
+          
+          // Empêcher la navigation pendant l'édition
+          if (convLink.getAttribute('contenteditable') === 'true') {
+            return; // Déjà en mode édition
+          }
+          
+          // Désactiver le lien pendant l'édition
+          const originalHref = convLink.href;
+          convLink.removeAttribute('href');
+          
+          // Rendre le texte éditable
+          convLink.setAttribute('contenteditable', 'true');
+          convLink.focus();
+          
+          // Utiliser le curseur text pour l'édition
+          safeSetStyle(convLink, 'cursor', 'text');
+          
+          // Sélectionner tout le texte
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(convLink);
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+          
+          // Style en mode édition
+          safeSetStyle(convLink, 'background-color', 'rgba(0, 0, 0, 0.05)');
+          safeSetStyle(convLink, 'outline', 'none');
+          safeSetStyle(convLink, 'padding', '0 2px');
+          
+          // Enregistrer le contenu original pour annulation
+          const originalName = convLink.textContent || '';
+          
+          // Arrêter la propagation des événements de souris pendant l'édition
+          const stopEventPropagation = (e: Event) => {
+            e.stopPropagation();
+          };
+          
+          convLink.addEventListener('mousedown', stopEventPropagation);
+          convLink.addEventListener('click', stopEventPropagation);
+          
+          // Gérer la validation par la touche Entrée
+          const handleEnterKey = (e: KeyboardEvent) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              convLink.blur(); // Déclenche l'événement blur qui validera
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              convLink.textContent = originalName;
+              convLink.blur();
+            }
+          };
+          
+          // Valider le nouveau nom quand on perd le focus
+          const handleBlur = async () => {
+            convLink.removeEventListener('keydown', handleEnterKey);
+            convLink.removeEventListener('blur', handleBlur);
+            convLink.removeEventListener('mousedown', stopEventPropagation);
+            convLink.removeEventListener('click', stopEventPropagation);
+            
+            // Désactiver l'édition
+            convLink.setAttribute('contenteditable', 'false');
+            safeSetStyle(convLink, 'background-color', 'transparent');
+            safeSetStyle(convLink, 'padding', '0');
+            
+            // Rétablir le curseur pointer
+            safeSetStyle(convLink, 'cursor', 'pointer');
+            
+            // Restaurer le lien
+            convLink.href = originalHref;
+            
+            // Récupérer le nouveau nom
+            const newName = convLink.textContent?.trim();
+            
+            // Si le nom a changé et n'est pas vide
+            if (newName && newName !== originalName && newName.length > 0) {
+              await renameConversation(conv.id, newName);
+            } else {
+              // Restaurer le nom original si vide ou annulé
+              convLink.textContent = originalName;
+            }
+          };
+          
+          convLink.addEventListener('keydown', handleEnterKey);
+          convLink.addEventListener('blur', handleBlur);
+        };
+        
+        // Ajouter la possibilité d'éditer en double-cliquant sur le nom
+        convLink.addEventListener('dblclick', makeConvNameEditable);
+        
+        // Gestionnaire d'événements pour éditer le nom de la conversation
+        editButton.addEventListener('click', makeConvNameEditable);
+        
         // Gestionnaire d'événements pour supprimer la conversation
-        removeButton.addEventListener('click', async () => {
+        removeButton.addEventListener('click', async (e) => {
+          e.stopPropagation();
           const confirmed = await showDeleteConfirmModal(conv.title || 'Conversation sans titre', 'conversation');
           if (confirmed) {
             await removeConversationFromFolder(folder.id, conv.id);
           }
         });
       }
-    } else if (folder.expanded) {
-      const emptyMsg = document.createElement('div');
-      emptyMsg.textContent = 'Aucune conversation dans ce dossier';
-      safeSetStyle(emptyMsg, 'fontSize', '11px');
-      safeSetStyle(emptyMsg, 'color', '#888');
-      safeSetStyle(emptyMsg, 'padding', '5px 0');
-      safeSetStyle(emptyMsg, 'fontStyle', 'italic');
-      conversationsContainer.appendChild(emptyMsg);
     }
     
     folderItem.appendChild(conversationsContainer);
     foldersList.appendChild(folderItem);
     
-    // Gestionnaire d'événements pour plier/déplier
-    folderHeader.addEventListener('click', (e) => {
-      if (e.target !== deleteButton) {
-        // Vérifier si l'événement provient du bouton de suppression ou d'un enfant du bouton
-        const isDeleteButtonClick = e.target === deleteButton || 
-                                    (deleteButton.contains && deleteButton.contains(e.target as Node));
-                                    
-        // Ne pas déclencher toggleFolderExpand si le clic est sur le bouton de suppression
-        if (!isDeleteButtonClick) {
+    // Gestionnaire d'événements pour plier/déplier avec distinction clic simple/double
+    folderHeader.addEventListener('click', function(e) {
+      // Vérifier si l'événement provient d'un bouton d'action ou d'un de ses enfants
+      if (e.target === renameButton || e.target === deleteButton || 
+          (renameButton.contains && renameButton.contains(e.target as Node)) ||
+          (deleteButton.contains && deleteButton.contains(e.target as Node))) {
+        return; // Ne rien faire si le clic est sur un bouton
+      }
+      
           e.stopPropagation();
+      
+      // Utiliser un attribut de données pour garder la trace du timer
+      const timerId = folderHeader.getAttribute('data-click-timer');
+      
+      if (timerId) {
+        // C'est un double-clic, annuler l'action de clic simple
+        clearTimeout(parseInt(timerId));
+        folderHeader.removeAttribute('data-click-timer');
+        // Ne pas plier/déplier, le double-clic est destiné à l'édition
+      } else {
+        // Premier clic, attendre un peu pour voir si un second suit
+        const newTimerId = setTimeout(() => {
+          // Pas de double-clic détecté, plier/déplier le dossier
           toggleFolderExpand(folder.id);
-        }
+          folderHeader.removeAttribute('data-click-timer');
+        }, 250);
+        
+        folderHeader.setAttribute('data-click-timer', newTimerId.toString());
       }
     });
     
+    // Ajouter un écouteur spécifique pour le double-clic sur le nom du dossier
+    folderName.addEventListener('dblclick', function(e) {
+      e.stopPropagation();
+      // Annuler le timer de clic simple pour éviter que le dossier se plie/déplie
+      const timerId = folderHeader.getAttribute('data-click-timer');
+      if (timerId) {
+        clearTimeout(parseInt(timerId));
+        folderHeader.removeAttribute('data-click-timer');
+      }
+      makeNameEditable(e);
+    });
+    
+    // Gestionnaire d'événements pour renommer le dossier
+    renameButton.addEventListener('click', async function(e) {
+      e.stopPropagation();
+      makeNameEditable(e);
+    });
+    
     // Gestionnaire d'événements pour supprimer le dossier
-    deleteButton.addEventListener('click', async (e) => {
+    deleteButton.addEventListener('click', async function(e) {
       e.stopPropagation();
       const confirmed = await showDeleteConfirmModal(folder.name, 'dossier');
       if (confirmed) {
@@ -1246,17 +1823,507 @@ async function renderFolders(): Promise<void> {
       }
     });
   }
+  
+  // Après avoir rendu les conversations, configurer le drag and drop
+  setupFolderConversationsDragAndDrop();
 }
 
-// Attendre que le DOM soit chargé pour injecter notre UI
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', injectFoldersUI);
+// Fonction pour configurer le drag and drop personnalisé pour les conversations dans les dossiers
+function setupFolderConversationsDragAndDrop() {
+  // Sélectionner tous les éléments de conversation dans les dossiers
+  const folderConversationItems = document.querySelectorAll('.le-chat-plus-conversation-item');
+  
+  folderConversationItems.forEach(item => {
+    // Éviter de configurer deux fois le même élément
+    if (item.getAttribute('data-chat-plus-folder-draggable')) return;
+    
+    // Marquer cet élément comme configuré
+    item.setAttribute('data-chat-plus-folder-draggable', 'true');
+    item.classList.add('folder-conversation-draggable');
+    
+    // Ajouter des styles pour le curseur pointer au lieu de grab
+    safeSetStyle(item as HTMLElement, 'cursor', 'pointer');
+    
+    // Trouver le lien pour extraire l'ID de conversation
+    const convLink = item.querySelector('a');
+    if (!convLink) return;
+    
+    // S'assurer que le lien a aussi un curseur pointer
+    safeSetStyle(convLink as HTMLElement, 'cursor', 'pointer');
+    
+    const href = convLink.getAttribute('href');
+    if (!href) return;
+    
+    // Extraire l'ID de conversation de l'URL
+    const pathSegments = href.split('/');
+    const chatIndex = pathSegments.indexOf('chat');
+    const conversationId = chatIndex >= 0 && chatIndex + 1 < pathSegments.length ? pathSegments[chatIndex + 1] : null;
+    
+    if (!conversationId) return;
+    
+    // Trouver le dossier parent
+    const folderItem = item.closest('.le-chat-plus-folder-item');
+    if (!folderItem) return;
+    
+    // Utiliser mousedown/mousemove/mouseup au lieu de drag and drop natif
+    item.addEventListener('mousedown', (e: MouseEvent) => {
+      // Ne pas démarrer le drag sur un clic droit ou sur le bouton de suppression
+      if (e.button !== 0) return;
+      const target = e.target as HTMLElement;
+      const isRemoveButton = target.tagName === 'BUTTON' || target.closest('button');
+      if (isRemoveButton) return;
+      
+      e.preventDefault(); // Empêcher la sélection de texte
+      
+      // Variables pour le drag
+      let isDragging = false;
+      let originFolderItem = folderItem;
+      let currentTargetFolder = null;
+      let reorderIndicator: HTMLElement | null = null;
+      let targetPosition = -1;
+      let currentDropTarget: HTMLElement | null = null;
+      
+      // Créer une copie visuelle de l'élément pour le drag
+      const rect = item.getBoundingClientRect();
+      const dragIndicator = document.createElement('div');
+      dragIndicator.className = 'folder-conversation-drag-clone';
+      dragIndicator.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+      </svg>`;
+      dragIndicator.style.position = 'fixed';
+      dragIndicator.style.zIndex = '10000';
+      dragIndicator.style.background = 'rgba(255, 255, 255, 0.25)';
+      dragIndicator.style.border = '1px solid rgba(221, 221, 221, 0.3)';
+      dragIndicator.style.borderRadius = '4px';
+      dragIndicator.style.padding = '6px';
+      dragIndicator.style.width = 'auto';
+      dragIndicator.style.height = 'auto';
+      dragIndicator.style.pointerEvents = 'none';
+      dragIndicator.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+      dragIndicator.style.opacity = '0';
+      dragIndicator.style.transition = 'opacity 0.15s';
+      dragIndicator.style.color = 'rgba(51, 51, 51, 0.7)';
+      dragIndicator.style.display = 'flex';
+      dragIndicator.style.alignItems = 'center';
+      dragIndicator.style.justifyContent = 'center';
+      document.body.appendChild(dragIndicator);
+      
+      // Position initiale
+      updateDragIndicatorPosition(e);
+      
+      // Ajouter la classe pour le style
+      item.classList.add('dragging');
+      
+      // Semi-transparence pour l'élément original
+      (item as HTMLElement).style.opacity = '0.6';
+      
+      // Désactiver la sélection de texte pendant le drag
+      document.body.style.userSelect = 'none';
+      
+      // Données de la conversation
+      const conversationData = {
+        id: conversationId,
+        title: convLink.textContent?.trim() || 'Conversation sans titre',
+        url: href.startsWith('/') ? window.location.origin + href : href
+      };
+      
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      
+      function handleMouseMove(moveEvent: MouseEvent) {
+        if (!isDragging && moveEvent.buttons === 0) {
+          // Si le bouton est relâché mais que mousemove est encore appelé
+          cleanup();
+          return;
+        }
+        
+        // Activer le drag après un petit mouvement
+        if (!isDragging) {
+          const dx = moveEvent.clientX - e.clientX;
+          const dy = moveEvent.clientY - e.clientY;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          if (distance > 5) {
+            isDragging = true;
+            dragIndicator.style.opacity = '1';
+          }
+        }
+        
+        if (isDragging) {
+          updateDragIndicatorPosition(moveEvent);
+          
+          // Nettoyer les indicateurs de réorganisation précédents
+          if (reorderIndicator && reorderIndicator.parentNode) {
+            reorderIndicator.parentNode.removeChild(reorderIndicator);
+            reorderIndicator = null;
+          }
+          
+          // Nettoyer les classes de survol précédentes
+          document.querySelectorAll('.drag-over, .drag-over-top, .drag-over-bottom').forEach(el => {
+            el.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
+          });
+          
+          // Trouver l'élément sous le curseur
+          const elementsUnderCursor = document.elementsFromPoint(moveEvent.clientX, moveEvent.clientY);
+          
+          // Chercher un dossier cible
+          const targetFolder = elementsUnderCursor.find(el => 
+            el.classList && el.classList.contains('le-chat-plus-folder-header')
+          ) as HTMLElement | undefined;
+          
+          // Chercher une conversation cible pour le repositionnement
+          const targetConversation = elementsUnderCursor.find(el => 
+            el.classList && el.classList.contains('le-chat-plus-conversation-item') && !el.classList.contains('dragging')
+          ) as HTMLElement | undefined;
+          
+          // Trouver le dossier qui contient la conversation cible
+          const targetFolderItem = targetConversation ? 
+            targetConversation.closest('.le-chat-plus-folder-item') : 
+            (targetFolder ? targetFolder.closest('.le-chat-plus-folder-item') : null);
+          
+          // Déterminer si nous sommes dans le même dossier ou un dossier différent
+          const isSameFolder = targetFolderItem === originFolderItem;
+          
+          // 1. Si on survole un en-tête de dossier, préparer pour un transfert vers ce dossier
+          if (targetFolder) {
+            targetFolder.classList.add('drag-over');
+            currentTargetFolder = targetFolder;
+            
+            // Effet visuel sobre sur le clone
+            dragIndicator.style.boxShadow = '0 2px 10px rgba(0,0,0,0.08)';
+            dragIndicator.style.borderColor = 'rgba(176, 176, 176, 0.4)';
+            dragIndicator.style.background = 'rgba(255, 255, 255, 0.35)';
+            
+            // Réinitialiser la cible de repositionnement
+            currentDropTarget = null;
+            targetPosition = -1;
+          } 
+          // 2. Si on survole une conversation
+          else if (targetConversation) {
+            // Obtenir les dimensions de l'élément cible
+            const targetRect = targetConversation.getBoundingClientRect();
+            const middleY = targetRect.top + targetRect.height / 2;
+            
+            // Déterminer si on survole la moitié supérieure ou inférieure
+            if (moveEvent.clientY < middleY) {
+              // Survol de la moitié supérieure
+              targetConversation.classList.add('drag-over-top');
+              // Créer un indicateur visuel au-dessus
+              reorderIndicator = createReorderIndicator(targetConversation, 'before');
 } else {
-  injectFoldersUI();
+              // Survol de la moitié inférieure
+              targetConversation.classList.add('drag-over-bottom');
+              // Créer un indicateur visuel en-dessous
+              reorderIndicator = createReorderIndicator(targetConversation, 'after');
+            }
+            
+            // Sauvegarder l'élément cible actuel pour le drop
+            currentDropTarget = targetConversation;
+            
+            // Calculer la position cible pour l'ordre
+            if (targetFolderItem) {
+              const conversationsInFolder = Array.from(targetFolderItem.querySelectorAll('.le-chat-plus-conversation-item'));
+              const targetIndex = conversationsInFolder.indexOf(targetConversation);
+              targetPosition = (moveEvent.clientY < middleY) ? targetIndex : targetIndex + 1;
+              
+              // Si on déplace après nous-mêmes dans le même dossier, corriger la position
+              if (isSameFolder) {
+                const ourIndex = conversationsInFolder.indexOf(item as HTMLElement);
+                if (ourIndex !== -1 && ourIndex < targetPosition) {
+                  targetPosition--; 
+                }
+              }
+            }
+            
+            // Si on est dans le même dossier, montrer indicateur de repositionnement
+            if (isSameFolder) {
+              // Effet visuel sobre pour le repositionnement
+              dragIndicator.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
+              dragIndicator.style.borderColor = 'rgba(120, 120, 120, 0.3)';
+              dragIndicator.style.background = 'rgba(245, 245, 245, 0.3)';
+            } 
+            // Si on est dans un dossier différent, montrer indicateur de transfert + position
+            else if (targetFolderItem) {
+              // Montrer qu'on va déplacer vers un autre dossier
+              const targetFolderHeader = targetFolderItem.querySelector('.le-chat-plus-folder-header');
+              if (targetFolderHeader) {
+                targetFolderHeader.classList.add('drag-over');
+                currentTargetFolder = targetFolderHeader as HTMLElement;
+              }
+              
+              // Effet visuel pour le transfert vers une position spécifique
+              dragIndicator.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
+              dragIndicator.style.borderColor = 'rgba(150, 150, 150, 0.3)';
+              dragIndicator.style.background = 'rgba(250, 250, 250, 0.3)';
+            }
+          } else {
+            // Pas de cible valide
+            dragIndicator.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+            dragIndicator.style.borderColor = 'rgba(221, 221, 221, 0.3)';
+            dragIndicator.style.background = 'rgba(255, 255, 255, 0.25)';
+            currentTargetFolder = null;
+            currentDropTarget = null;
+            targetPosition = -1;
+          }
+        }
+      }
+      
+      async function handleMouseUp(upEvent: MouseEvent) {
+        if (isDragging) {
+          // Animation de drop
+          dragIndicator.style.transition = 'all 0.15s ease-out';
+          
+          // Cas 1: Drop dans un dossier différent à une position spécifique
+          if (currentDropTarget && targetPosition !== -1 && currentDropTarget.closest('.le-chat-plus-folder-item') !== originFolderItem) {
+            // Animation vers la position cible
+            const targetRect = currentDropTarget.getBoundingClientRect();
+            dragIndicator.style.transform = 'scale(0.9)';
+            
+            // Animer vers la position d'insertion
+            if (currentDropTarget.classList.contains('drag-over-top')) {
+              dragIndicator.style.top = `${targetRect.top - 1}px`;
+            } else {
+              dragIndicator.style.top = `${targetRect.bottom + 1}px`;
+            }
+            
+            dragIndicator.style.left = `${targetRect.left + targetRect.width/2}px`;
+            dragIndicator.style.opacity = '0';
+            
+            // Trouver l'ID du dossier source
+            const sourceFolderId = await findFolderIdFromElement(originFolderItem);
+            
+            // Trouver l'ID du dossier cible
+            const targetFolderItem = currentDropTarget.closest('.le-chat-plus-folder-item');
+            const targetFolderId = targetFolderItem ? await findFolderIdFromElement(targetFolderItem) : null;
+            
+            if (sourceFolderId && targetFolderId) {
+              // Même dossier = pas d'action de déplacement entre dossiers
+              if (sourceFolderId === targetFolderId) {
+                // S'assurer que la classe drop-success est retirée avant de sortir
+                currentTargetFolder.classList.remove('drop-success');
+                cleanup();
+                return;
+              }
+              
+              // Supprimer du dossier source
+              await removeConversationFromFolder(sourceFolderId, conversationId);
+              
+              // Ajouter au dossier cible à la position spécifique
+              await addConversationToFolder(targetFolderId, conversationData, targetPosition);
+              
+              // Retirer la classe après un délai
+              setTimeout(() => {
+                if (currentTargetFolder) {
+                  currentTargetFolder.classList.remove('drop-success');
+                }
+              }, 500);
+            }
+          }
+          // Cas 2: Drop sur un en-tête de dossier
+          else if (currentTargetFolder) {
+            // Animation vers le dossier cible
+            const folderRect = currentTargetFolder.getBoundingClientRect();
+            dragIndicator.style.transform = 'scale(0.8)';
+            dragIndicator.style.top = `${folderRect.top + folderRect.height/2}px`;
+            dragIndicator.style.left = `${folderRect.left + folderRect.width/2}px`;
+            dragIndicator.style.opacity = '0';
+            
+            // Trouver l'ID du dossier
+            const targetFolderItem = currentTargetFolder.closest('.le-chat-plus-folder-item');
+            if (targetFolderItem) {
+              // Effet visuel
+              currentTargetFolder.classList.remove('drag-over');
+              currentTargetFolder.classList.add('drop-success');
+              
+              // Trouver l'ID du dossier source
+              const sourceFolderId = await findFolderIdFromElement(originFolderItem);
+              
+              // Trouver l'ID du dossier cible
+              const targetFolderId = await findFolderIdFromElement(targetFolderItem);
+              
+              if (sourceFolderId && targetFolderId) {
+                // Même dossier = pas d'action de déplacement entre dossiers
+                if (sourceFolderId === targetFolderId) {
+                  // S'assurer que la classe drop-success est retirée avant de sortir
+                  currentTargetFolder.classList.remove('drop-success');
+                  cleanup();
+                  return;
+                }
+                
+                // Supprimer du dossier source
+                await removeConversationFromFolder(sourceFolderId, conversationId);
+                
+                // Ajouter au dossier cible
+                await addConversationToFolder(targetFolderId, conversationData);
+                
+                // Retirer la classe après un délai
+                setTimeout(() => {
+                  if (currentTargetFolder) {
+                    currentTargetFolder.classList.remove('drop-success');
+                  }
+                }, 500);
+              }
+            }
+          } 
+          // Cas 3: Réorganisation dans le même dossier
+          else if (currentDropTarget && targetPosition !== -1) {
+            // Animation vers la position cible
+            const targetRect = currentDropTarget.getBoundingClientRect();
+            dragIndicator.style.transform = 'scale(0.9)';
+            
+            // Selon que l'on dépose au-dessus ou en-dessous
+            if (currentDropTarget.classList.contains('drag-over-top')) {
+              dragIndicator.style.top = `${targetRect.top - 1}px`;
+            } else {
+              dragIndicator.style.top = `${targetRect.bottom + 1}px`;
+            }
+            
+            dragIndicator.style.left = `${targetRect.left + targetRect.width/2}px`;
+            dragIndicator.style.opacity = '0';
+            
+            // Trouver l'ID du dossier
+            const sourceFolderId = await findFolderIdFromElement(originFolderItem);
+            
+            if (sourceFolderId) {
+              // Réorganiser la conversation dans le dossier
+              await reorderConversation(sourceFolderId, conversationId, targetPosition);
+            }
+          } else {
+            // Pas de cible valide, animation de retour
+            dragIndicator.style.transform = 'scale(0) rotate(0deg)';
+            dragIndicator.style.opacity = '0';
+          }
+          
+          // Laisser l'animation se terminer avant de nettoyer
+          setTimeout(cleanup, 200);
+        } else {
+          cleanup();
+        }
+      }
+      
+      // Créer un indicateur visuel de position pour le réordonnancement
+      function createReorderIndicator(targetElement: HTMLElement, position: 'before' | 'after'): HTMLElement {
+        const indicator = document.createElement('div');
+        indicator.className = 'reorder-indicator visible';
+        
+        // Insérer l'indicateur avant ou après l'élément cible
+        if (position === 'before') {
+          targetElement.parentNode?.insertBefore(indicator, targetElement);
+        } else {
+          const nextElement = targetElement.nextElementSibling;
+          if (nextElement) {
+            targetElement.parentNode?.insertBefore(indicator, nextElement);
+          } else {
+            targetElement.parentNode?.appendChild(indicator);
+          }
+        }
+        
+        return indicator;
+      }
+      
+      async function findFolderIdFromElement(folderElement: Element): Promise<string | null> {
+        const folders = await getFolders();
+        const folderItems = document.querySelectorAll('.le-chat-plus-folder-item');
+        const folderIndex = Array.from(folderItems).indexOf(folderElement);
+        if (folderIndex >= 0 && folderIndex < folders.length) {
+          return folders[folderIndex].id;
+        }
+        return null;
+      }
+      
+      function cleanup() {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+        
+        // Nettoyer toutes les classes liées au drag
+        document.querySelectorAll('.drag-over, .drag-over-top, .drag-over-bottom').forEach(el => {
+          el.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
+        });
+        
+        if (dragIndicator && dragIndicator.parentNode) {
+          dragIndicator.parentNode.removeChild(dragIndicator);
+        }
+        
+        // Nettoyer l'indicateur de réorganisation
+        if (reorderIndicator && reorderIndicator.parentNode) {
+          reorderIndicator.parentNode.removeChild(reorderIndicator);
+        }
+        
+        if (draggedConversationElement) {
+          draggedConversationElement.classList.remove('dragging');
+          (draggedConversationElement as HTMLElement).style.opacity = '1';
+        }
+        
+        document.body.style.userSelect = '';
+        isDragging = false;
+        draggedConversationId = null;
+        draggedConversationElement = null;
+      }
+      
+      function updateDragIndicatorPosition(evt: MouseEvent) {
+        if (dragIndicator) {
+          // Déplacer l'élément avec un décalage par rapport au curseur
+          dragIndicator.style.top = `${evt.clientY - 10}px`;
+          dragIndicator.style.left = `${evt.clientX - dragIndicator.offsetWidth / 3}px`;
+        }
+      }
+    });
+  });
 }
 
-// Configurer l'observateur pour surveiller les modifications du DOM
-setupDOMObserver();
+// Fonction pour mettre à jour uniquement l'état actif des conversations sans recharger tous les dossiers
+async function updateActiveConversationHighlight() {
+  const activeConversationId = getCurrentConversationId();
+  
+  // Obtenir tous les éléments de conversation dans les dossiers
+  const conversationElements = document.querySelectorAll('.le-chat-plus-conversation-item');
+  
+  // Supprimer d'abord tous les états actifs
+  conversationElements.forEach((convItem) => {
+    const link = convItem.querySelector('a');
+    if (link) {
+      safeSetStyle(link, 'color', 'var(--text-color-muted)');
+      safeSetStyle(link, 'fontWeight', 'normal');
+      safeSetStyle(link, 'opacity', '1');
+    }
+    // Réinitialiser les styles de l'élément conversation
+    convItem.classList.remove('active-conversation');
+    safeSetStyle(convItem as HTMLElement, 'opacity', '1');
+    safeSetStyle(convItem as HTMLElement, 'background-color', 'transparent');
+  });
+  
+  // Si nous sommes sur un nouveau chat (pas d'ID de conversation), arrêter ici
+  // Cela évite qu'une conversation reste marquée comme active lorsqu'on navigue vers un nouveau chat
+  if (!activeConversationId) {
+    return;
+  }
+  
+  console.log("Mise à jour de la conversation active:", activeConversationId);
+  
+  // Parcourir toutes les conversations dans les dossiers
+  for (const convItem of conversationElements) {
+    const link = convItem.querySelector('a');
+    if (link && link.href) {
+      // Extraire l'ID de la conversation du lien
+      const url = new URL(link.href);
+      const pathSegments = url.pathname.split('/');
+      const chatIndex = pathSegments.indexOf('chat');
+      
+      if (chatIndex >= 0 && chatIndex + 1 < pathSegments.length) {
+        const convId = pathSegments[chatIndex + 1];
+        
+        // Si cette conversation est active, mettre à jour son style
+        if (convId === activeConversationId) {
+          safeSetStyle(link, 'color', 'var(--text-color-subtle)');
+          safeSetStyle(link, 'fontWeight', 'bold');
+          safeSetStyle(link, 'opacity', '1');
+          convItem.classList.add('active-conversation');
+        }
+      }
+    }
+  }
+}
 
 // Ajouter un écouteur pour les changements d'URL
 function setupURLChangeListener() {
@@ -1303,49 +2370,6 @@ function setupURLChangeListener() {
   });
 }
 
-// Fonction pour mettre à jour uniquement l'état actif des conversations sans recharger tous les dossiers
-async function updateActiveConversationHighlight() {
-  const activeConversationId = getCurrentConversationId();
-  if (!activeConversationId) return;
-  
-  console.log("Mise à jour de la conversation active:", activeConversationId);
-  
-  // Obtenir tous les éléments de conversation dans les dossiers
-  const conversationElements = document.querySelectorAll('.le-chat-plus-conversation-item');
-  
-  // Supprimer d'abord tous les états actifs
-  conversationElements.forEach(convItem => {
-    const link = convItem.querySelector('a');
-    if (link) {
-      safeSetStyle(link, 'color', 'var(--text-color-muted)');
-      safeSetStyle(link, 'fontWeight', 'normal');
-    }
-    convItem.classList.remove('active-conversation');
-  });
-  
-  // Parcourir toutes les conversations dans les dossiers
-  for (const convItem of conversationElements) {
-    const link = convItem.querySelector('a');
-    if (link && link.href) {
-      // Extraire l'ID de la conversation du lien
-      const url = new URL(link.href);
-      const pathSegments = url.pathname.split('/');
-      const chatIndex = pathSegments.indexOf('chat');
-      
-      if (chatIndex >= 0 && chatIndex + 1 < pathSegments.length) {
-        const convId = pathSegments[chatIndex + 1];
-        
-        // Si cette conversation est active, mettre à jour son style
-        if (convId === activeConversationId) {
-          safeSetStyle(link, 'color', 'var(--text-color-subtle)');
-          safeSetStyle(link, 'fontWeight', 'bold');
-          convItem.classList.add('active-conversation');
-        }
-      }
-    }
-  }
-}
-
 // Initialiser l'écouteur de changements d'URL
 setupURLChangeListener();
 
@@ -1370,7 +2394,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Injecter un bouton avec icône de crochets à côté du bouton d'envoi
 function injectPromptButton() {
-  console.log("Tentative d'injection du bouton de prompt...");
+  // console.log("Tentative d'injection du bouton de prompt...");
   
   // Définir une constante pour l'opacité par défaut du bouton
   const BUTTON_DEFAULT_OPACITY = '0.5';
@@ -1380,7 +2404,7 @@ function injectPromptButton() {
   function setupThemeChangeObserver() {
     // Fonction pour détecter les changements de thème
     const detectThemeChange = () => {
-      console.log("Vérification des changements de thème...");
+      // console.log("Vérification des changements de thème...");
       
       // Rechercher le bouton de prompt
       const promptButton = document.getElementById('le-chat-plus-prompt-button');
@@ -1398,7 +2422,7 @@ function injectPromptButton() {
       safeSetStyle(promptButton, 'color', sendButtonStyles.color);
       safeSetStyle(promptButton, 'border', sendButtonStyles.border);
       
-      console.log("Styles du bouton de prompt mis à jour après changement de thème");
+      // console.log("Styles du bouton de prompt mis à jour après changement de thème");
     };
     
     // Observer les changements d'attributs dans le body ou html pour détecter les changements de thème
@@ -1409,7 +2433,7 @@ function injectPromptButton() {
             (mutation.attributeName === 'class' || 
              mutation.attributeName === 'data-theme' || 
              mutation.attributeName === 'theme')) {
-          console.log("Changement de thème détecté via attribut:", mutation.attributeName);
+          // console.log("Changement de thème détecté via attribut:", mutation.attributeName);
           detectThemeChange();
         }
       }
@@ -1459,7 +2483,7 @@ function injectPromptButton() {
     
     // Si on a trouvé le bouton d'envoi et que notre bouton n'existe pas
     if (sendButton && !promptButtonExists) {
-      console.log("Bouton d'envoi trouvé, injection du bouton de prompt...");
+      // console.log("Bouton d'envoi trouvé, injection du bouton de prompt...");
       
       // Créer notre bouton de prompt
       const promptButton = document.createElement('button');
@@ -1534,7 +2558,7 @@ function injectPromptButton() {
       
       // Insérer notre bouton avant le bouton d'envoi
       sendButton.parentNode.insertBefore(promptButton, sendButton);
-      console.log("Bouton de prompt injecté avec succès");
+      // console.log("Bouton de prompt injecté avec succès");
       
       // Configurer l'observateur de changement de thème après avoir injecté le bouton
       setupThemeChangeObserver();
@@ -1543,7 +2567,7 @@ function injectPromptButton() {
     // Vérifier si le bouton d'envoi existe mais que notre bouton a disparu
     // (ce qui arrive quand l'interface est reconstruite)
     else if (sendButton && !document.getElementById('le-chat-plus-prompt-button')) {
-      console.log("Le bouton de prompt a disparu, réinjection...");
+      // console.log("Le bouton de prompt a disparu, réinjection...");
       // La logique sera appelée à nouveau au prochain cycle d'observation
       
       // S'assurer également que nos styles sont toujours présents
@@ -1574,7 +2598,7 @@ function injectPromptButton() {
     const promptButton = document.getElementById('le-chat-plus-prompt-button');
     
     if (sendButton && !promptButton) {
-      console.log("Surveillance périodique: bouton manquant, tentative de réinjection...");
+      // console.log("Surveillance périodique: bouton manquant, tentative de réinjection...");
       // Le MutationObserver se chargera de réinjecter le bouton
     }
     
@@ -1606,3 +2630,115 @@ if (document.readyState === 'loading') {
 } else {
   injectPromptButton();
 } 
+
+// Fonction pour réorganiser une conversation dans un dossier
+async function reorderConversation(folderId: string, conversationId: string, newPosition: number): Promise<void> {
+  const conversations = await storage.get<ConversationRef[]>(`folder_conversations_${folderId}`) || [];
+  
+  // Trouver l'index actuel de la conversation
+  const currentIndex = conversations.findIndex(c => c.id === conversationId);
+  if (currentIndex === -1) return; // La conversation n'est pas dans ce dossier
+  
+  // S'assurer que la nouvelle position est valide
+  if (newPosition < 0) newPosition = 0;
+  if (newPosition >= conversations.length) newPosition = conversations.length - 1;
+  
+  // Si la position ne change pas, ne rien faire
+  if (newPosition === currentIndex) return;
+  
+  // Déplacer la conversation à sa nouvelle position
+  const [conversationToMove] = conversations.splice(currentIndex, 1);
+  conversations.splice(newPosition, 0, conversationToMove);
+  
+  // Sauvegarder l'ordre mis à jour
+  await storage.set(`folder_conversations_${folderId}`, conversations);
+  
+  // Rafraîchir l'interface
+  await renderFolders();
+} 
+
+// Fonction pour renommer un dossier
+async function renameFolder(folderId: string, newName: string): Promise<void> {
+  const folders = await getFolders();
+  const folderIndex = folders.findIndex(f => f.id === folderId);
+  
+  if (folderIndex !== -1) {
+    folders[folderIndex].name = newName;
+    await storage.set('folders', folders);
+    await renderFolders();
+  }
+}
+
+// Fonction pour renommer une conversation
+async function renameConversation(conversationId: string, newTitle: string): Promise<void> {
+  // Parcourir tous les dossiers pour trouver la conversation
+  const folders = await getFolders();
+  
+  for (const folder of folders) {
+    const conversations = await storage.get<ConversationRef[]>(`folder_conversations_${folder.id}`) || [];
+    const convIndex = conversations.findIndex(c => c.id === conversationId);
+    
+    if (convIndex !== -1) {
+      // Mettre à jour le titre de la conversation
+      conversations[convIndex].title = newTitle;
+      await storage.set(`folder_conversations_${folder.id}`, conversations);
+    }
+  }
+  
+  // Rafraîchir l'interface
+  await renderFolders();
+}
+
+// Fonction pour gérer les clics sur une conversation dans un dossier
+const handleConvLinkClick = (e: MouseEvent, conv: ConversationRef, convLink: HTMLElement) => {
+  // Si en mode édition, ne rien faire
+  if (convLink.getAttribute('contenteditable') === 'true') {
+    return;
+  }
+  
+  e.preventDefault();
+  
+  // Extraire le chemin correct de l'URL
+  let path;
+  try {
+    // Vérifier si l'URL est déjà une URL complète
+    if (conv.url.includes('//')) {
+      const url = new URL(conv.url);
+      path = url.pathname;
+    } else {
+      // Sinon, c'est juste un chemin
+      path = conv.url;
+    }
+    
+    // S'assurer que le chemin commence par /chat/
+    if (!path.startsWith('/chat/')) {
+      if (path.includes('/chat/')) {
+        // Extraire la partie après /chat/
+        const parts = path.split('/chat/');
+        path = '/chat/' + parts[parts.length - 1];
+      } else {
+        console.error('Format de chemin invalide:', path);
+        return;
+      }
+    }
+    
+    // Trouver les liens de conversation natifs
+    const sidebarLinks = Array.from(document.querySelectorAll('a[href^="/chat/"]'));
+    const matchingLink = sidebarLinks.find(link => link.getAttribute('href') === path);
+    
+    if (matchingLink) {
+      // Si un lien natif correspondant existe, simuler un clic dessus
+      (matchingLink as HTMLElement).click();
+    } else {
+      // Sinon, utiliser l'API History
+      window.history.pushState({}, '', path);
+      
+      // Déclencher un événement de changement d'URL pour que l'application réagisse
+      const navEvent = new PopStateEvent('popstate');
+      window.dispatchEvent(navEvent);
+    }
+  } catch (error) {
+    console.error('Erreur lors de la navigation:', error);
+  }
+};
+
