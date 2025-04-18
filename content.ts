@@ -194,6 +194,83 @@ function injectStyles() {
   const styleElement = document.createElement('style');
   styleElement.id = 'le-chat-plus-styles';
   styleElement.textContent = `
+    /* Styles de base pour notre interface */
+    .le-chat-plus-folders-container-scrollbar::-webkit-scrollbar,
+    .le-chat-plus-folder-content-scrollbar::-webkit-scrollbar,
+    .le-chat-plus-folders-list-scrollbar::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    
+    .le-chat-plus-folders-container-scrollbar::-webkit-scrollbar-track,
+    .le-chat-plus-folder-content-scrollbar::-webkit-scrollbar-track,
+    .le-chat-plus-folders-list-scrollbar::-webkit-scrollbar-track {
+      background: #f0f0f0;
+      border-radius: 4px;
+    }
+    
+    .le-chat-plus-folders-container-scrollbar::-webkit-scrollbar-thumb,
+    .le-chat-plus-folder-content-scrollbar::-webkit-scrollbar-thumb,
+    .le-chat-plus-folders-list-scrollbar::-webkit-scrollbar-thumb {
+      background: #cccccc;
+      border-radius: 4px;
+      border: 1px solid #f0f0f0;
+    }
+    
+    .le-chat-plus-folders-container-scrollbar::-webkit-scrollbar-thumb:hover,
+    .le-chat-plus-folder-content-scrollbar::-webkit-scrollbar-thumb:hover,
+    .le-chat-plus-folders-list-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #aaaaaa;
+    }
+    
+    /* Support de Firefox pour notre sidebar */
+    .le-chat-plus-folders-container-scrollbar,
+    .le-chat-plus-folder-content-scrollbar,
+    .le-chat-plus-folders-list-scrollbar {
+      scrollbar-width: thin;
+      scrollbar-color: #cccccc #f0f0f0;
+    }
+    
+    /* Thème sombre pour notre sidebar */
+    [data-theme="dark"] #le-chat-plus-folders-container::-webkit-scrollbar-track,
+    [data-theme="dark"] .le-chat-plus-folder-content::-webkit-scrollbar-track,
+    [data-theme="dark"] #le-chat-plus-folders-list::-webkit-scrollbar-track,
+    .dark #le-chat-plus-folders-container::-webkit-scrollbar-track,
+    .dark .le-chat-plus-folder-content::-webkit-scrollbar-track,
+    .dark #le-chat-plus-folders-list::-webkit-scrollbar-track {
+      background: #2a2a2a;
+      border-radius: 4px;
+    }
+    
+    [data-theme="dark"] #le-chat-plus-folders-container::-webkit-scrollbar-thumb,
+    [data-theme="dark"] .le-chat-plus-folder-content::-webkit-scrollbar-thumb,
+    [data-theme="dark"] #le-chat-plus-folders-list::-webkit-scrollbar-thumb,
+    .dark #le-chat-plus-folders-container::-webkit-scrollbar-thumb,
+    .dark .le-chat-plus-folder-content::-webkit-scrollbar-thumb,
+    .dark #le-chat-plus-folders-list::-webkit-scrollbar-thumb {
+      background: #555555;
+      border-radius: 4px;
+      border: 1px solid #2a2a2a;
+    }
+    
+    [data-theme="dark"] #le-chat-plus-folders-container::-webkit-scrollbar-thumb:hover,
+    [data-theme="dark"] .le-chat-plus-folder-content::-webkit-scrollbar-thumb:hover,
+    [data-theme="dark"] #le-chat-plus-folders-list::-webkit-scrollbar-thumb:hover,
+    .dark #le-chat-plus-folders-container::-webkit-scrollbar-thumb:hover,
+    .dark .le-chat-plus-folder-content::-webkit-scrollbar-thumb:hover,
+    .dark #le-chat-plus-folders-list::-webkit-scrollbar-thumb:hover {
+      background: #666666;
+    }
+    
+    [data-theme="dark"] #le-chat-plus-folders-container,
+    [data-theme="dark"] .le-chat-plus-folder-content,
+    [data-theme="dark"] #le-chat-plus-folders-list,
+    .dark #le-chat-plus-folders-container,
+    .dark .le-chat-plus-folder-content,
+    .dark #le-chat-plus-folders-list {
+      scrollbar-color: #555555 #2a2a2a;
+    }
+    
     .le-chat-plus-folder-header {
       display: flex;
       justify-content: space-between;
@@ -207,9 +284,7 @@ function injectStyles() {
       box-sizing: border-box;
     }
     
-    .le-chat-plus-folder-header:hover {
-      background-color: var(--background-color-muted);
-    }
+    
     
     .le-chat-plus-folder-header.drag-over {
       background-color: rgba(0, 0, 0, 0.05);
@@ -246,14 +321,7 @@ function injectStyles() {
       transition: background-color 0.2s;
     }
     
-    .le-chat-plus-conversation-item:hover {
-      background-color: var(--background-color-muted);
-    }
     
-    .le-chat-plus-conversation-item.active-conversation {
-      background-color: rgba(0, 0, 0, 0.05);
-      opacity: 1 !important;
-    }
     
     .le-chat-plus-conversation-item.active-conversation a {
       opacity: 1 !important;
@@ -278,7 +346,7 @@ function injectStyles() {
       opacity: 0;
       transition: opacity 0.2s;
       position: relative;
-      width: 10%;
+      width: 5%;
       height: 2px;
     }
     
@@ -321,8 +389,9 @@ function injectStyles() {
       opacity: 1;
     }
     
+    /* Style pour le mode clair (défaut) */
     .le-chat-plus-modal-content {
-      background-color: white;
+      background-color: #ffffff;
       border-radius: 8px;
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
       width: 300px;
@@ -330,6 +399,12 @@ function injectStyles() {
       padding: 16px;
       transform: translateY(-20px);
       transition: transform 0.2s;
+    }
+    
+    /* Style pour le mode sombre */
+    [data-theme="dark"] .le-chat-plus-modal-content {
+      background-color: #1e1e1e;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
     }
     
     .le-chat-plus-modal.visible .le-chat-plus-modal-content {
@@ -343,11 +418,19 @@ function injectStyles() {
       color: #333;
     }
     
+    [data-theme="dark"] .le-chat-plus-modal-header {
+      color: #f0f0f0;
+    }
+    
     .le-chat-plus-modal-message {
       font-size: 14px;
       margin-bottom: 16px;
       color: #555;
       line-height: 1.4;
+    }
+    
+    [data-theme="dark"] .le-chat-plus-modal-message {
+      color: #cccccc;
     }
     
     .le-chat-plus-modal-input {
@@ -359,6 +442,14 @@ function injectStyles() {
       margin-bottom: 16px;
       box-sizing: border-box;
       transition: border-color 0.2s;
+      color: #333;
+      background-color: #ffffff;
+    }
+    
+    [data-theme="dark"] .le-chat-plus-modal-input {
+      color: #f0f0f0;
+      background-color: #333333;
+      border-color: #444444;
     }
     
     .le-chat-plus-modal-input:focus {
@@ -366,11 +457,16 @@ function injectStyles() {
       border-color: #999;
     }
     
+    [data-theme="dark"] .le-chat-plus-modal-input:focus {
+      border-color: #666;
+    }
+    
     .le-chat-plus-modal-buttons {
       display: flex;
       justify-content: flex-end;
       gap: 8px;
     }
+    
     
     .le-chat-plus-modal-button {
       padding: 6px 12px;
@@ -387,8 +483,17 @@ function injectStyles() {
       border: 1px solid #ddd;
     }
     
+    [data-theme="dark"] .le-chat-plus-modal-button.cancel {
+      color: #cccccc;
+      border-color: #444444;
+    }
+    
     .le-chat-plus-modal-button.cancel:hover {
       background-color: #f5f5f5;
+    }
+    
+    [data-theme="dark"] .le-chat-plus-modal-button.cancel:hover {
+      background-color: #2a2a2a;
     }
     
     .le-chat-plus-modal-button.confirm {
@@ -397,8 +502,18 @@ function injectStyles() {
       border: 1px solid #ddd;
     }
     
+    [data-theme="dark"] .le-chat-plus-modal-button.confirm {
+      background-color: #2a2a2a;
+      color: #f0f0f0;
+      border-color: #444444;
+    }
+    
     .le-chat-plus-modal-button.confirm:hover {
       background-color: #e5e5e5;
+    }
+    
+    [data-theme="dark"] .le-chat-plus-modal-button.confirm:hover {
+      background-color: #333333;
     }
     
     .le-chat-plus-modal-button.delete {
@@ -407,8 +522,18 @@ function injectStyles() {
       border: 1px solid rgba(220, 0, 0, 0.2);
     }
     
+    [data-theme="dark"] .le-chat-plus-modal-button.delete {
+      background-color: rgba(150, 0, 0, 0.1);
+      color: #ff5555;
+      border-color: rgba(220, 0, 0, 0.3);
+    }
+    
     .le-chat-plus-modal-button.delete:hover {
       background-color: rgba(220, 0, 0, 0.1);
+    }
+    
+    [data-theme="dark"] .le-chat-plus-modal-button.delete:hover {
+      background-color: rgba(150, 0, 0, 0.2);
     }
   `;
   
@@ -425,6 +550,54 @@ function showModal(options: {
   isDelete?: boolean;
 }): Promise<string | boolean | null> {
   return new Promise((resolve) => {
+    // Détecter si le thème sombre est activé - utiliser plusieurs méthodes pour une détection plus fiable
+    let isDarkTheme = false;
+    
+    // Méthode 1: Vérifier l'attribut data-theme du html
+    if (document.documentElement.getAttribute('data-theme') === 'dark') {
+      isDarkTheme = true;
+    }
+    // Méthode 2: Vérifier s'il y a une classe dark sur le html ou body
+    else if (document.documentElement.classList.contains('dark') || document.body.classList.contains('dark')) {
+      isDarkTheme = true;
+    }
+    // Méthode 3: Vérifier la couleur de fond du body
+    else {
+      try {
+        const bodyBgColor = window.getComputedStyle(document.body).backgroundColor;
+        if (bodyBgColor) {
+          const rgb = bodyBgColor.match(/\d+/g);
+          if (rgb && rgb.length >= 3) {
+            const [r, g, b] = rgb.map(Number);
+            // Si la luminosité est faible, c'est un thème sombre
+            const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+            isDarkTheme = brightness < 125;
+          }
+        }
+      } catch (error) {
+        console.error("Erreur lors de la détection de la couleur de fond:", error);
+      }
+    }
+    
+    // Méthode 4: Dernier recours - vérifier depuis le stockage
+    if (!isDarkTheme) {
+      try {
+        // Vérifier si nous avons stocké l'information de thème précédemment
+        chrome.storage.local.get("pageIsDarkMode", (result) => {
+          if (result && result.pageIsDarkMode === true) {
+            isDarkTheme = true;
+            // Réappliquer les styles avec le bon thème
+            applyModalStyles(isDarkTheme);
+          }
+        });
+      } catch (error) {
+        console.error("Erreur lors de l'accès au stockage:", error);
+      }
+    }
+    
+    // Console log pour le débogage
+    console.log("Le Chat+: Thème détecté pour le modal:", isDarkTheme ? "Sombre" : "Clair");
+    
     // Créer le modal
     const modal = document.createElement('div');
     modal.className = 'le-chat-plus-modal';
@@ -433,18 +606,106 @@ function showModal(options: {
     const modalContent = document.createElement('div');
     modalContent.className = 'le-chat-plus-modal-content';
     
+    let input: HTMLInputElement | null = null;
+    let cancelButton: HTMLButtonElement;
+    let confirmButton: HTMLButtonElement;
+    
+    // Fonction pour appliquer les styles selon le thème
+    function applyModalStyles(isDark: boolean) {
+      // Styles pour le contenu du modal
+      if (isDark) {
+        // Mode sombre
+        modalContent.style.backgroundColor = '#2a2a2a'; // Fond sombre
+        modalContent.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.5)';
+        modalContent.style.color = '#ffffff';
+        modalContent.style.border = '1px solid #444444';
+      } else {
+        // Mode clair
+        modalContent.style.backgroundColor = '#ffffff';
+        modalContent.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.1)';
+        modalContent.style.color = '#333333';
+        modalContent.style.border = '1px solid #eeeeee';
+      }
+      
+      // Si l'input existe, appliquer les styles
+      if (input) {
+        if (isDark) {
+          input.style.backgroundColor = '#3a3a3a';
+          input.style.color = '#ffffff';
+          input.style.border = '1px solid #555555';
+        } else {
+          input.style.backgroundColor = '#f5f5f5';
+          input.style.color = '#333333';
+          input.style.border = '1px solid #dddddd';
+        }
+      }
+      
+      // Si les boutons existent, appliquer les styles
+      if (cancelButton) {
+        if (isDark) {
+          cancelButton.style.backgroundColor = 'transparent';
+          cancelButton.style.color = '#cccccc';
+          cancelButton.style.border = '1px solid #444444';
+        } else {
+          cancelButton.style.backgroundColor = 'transparent';
+          cancelButton.style.color = '#666666';
+          cancelButton.style.border = '1px solid #dddddd';
+        }
+      }
+      
+      if (confirmButton) {
+        if (options.isDelete) {
+          if (isDark) {
+            confirmButton.style.backgroundColor = 'transparent'; // Fond transparent en dark mode
+            confirmButton.style.color = '#ff5555';
+            confirmButton.style.border = '1px solid #ff5555'; // Bordure rouge vif correspondant à la couleur du texte
+          } else {
+            confirmButton.style.backgroundColor = 'transparent'; // Fond transparent en mode clair
+            confirmButton.style.color = '#dd0000';
+            confirmButton.style.border = '1px solid #dd0000'; // Bordure de la même couleur que le texte
+          }
+        } else {
+          if (isDark) {
+            confirmButton.style.backgroundColor = '#3a3a3a';
+            confirmButton.style.color = '#ffffff';
+            confirmButton.style.border = '1px solid #555555';
+          } else {
+            confirmButton.style.backgroundColor = '#f0f0f0';
+            confirmButton.style.color = '#333333';
+            confirmButton.style.border = '1px solid #dddddd';
+          }
+        }
+      }
+    }
+    
+    // Styles communs
+    modalContent.style.borderRadius = '8px';
+    modalContent.style.width = '300px';
+    modalContent.style.maxWidth = '90%';
+    modalContent.style.padding = '16px';
+    modalContent.style.transform = 'translateY(-20px)';
+    modalContent.style.transition = 'transform 0.2s';
+    
     // En-tête
     const header = document.createElement('div');
     header.className = 'le-chat-plus-modal-header';
     header.textContent = options.title;
     
-    // Message (optionnel)
-    let input: HTMLInputElement | null = null;
+    // Styles pour l'en-tête
+    header.style.fontSize = '16px';
+    header.style.fontWeight = '500';
+    header.style.marginBottom = '12px';
+    header.style.color = isDarkTheme ? '#ffffff' : '#333333';
     
+    // Message (optionnel)
     if (options.message) {
       const message = document.createElement('div');
       message.className = 'le-chat-plus-modal-message';
       message.textContent = options.message;
+      message.style.fontSize = '14px';
+      message.style.marginBottom = '16px';
+      message.style.color = isDarkTheme ? '#cccccc' : '#555555';
+      message.style.lineHeight = '1.4';
       modalContent.appendChild(message);
     }
     
@@ -454,22 +715,125 @@ function showModal(options: {
       input.className = 'le-chat-plus-modal-input';
       input.type = 'text';
       input.placeholder = options.inputPlaceholder;
+      
+      // Styles pour l'input similaire à la barre du chat Mistral
+      input.style.width = '100%';
+      input.style.padding = '8px 10px';
+      input.style.borderRadius = '8px';
+      input.style.fontSize = '14px';
+      input.style.marginBottom = '16px';
+      input.style.boxSizing = 'border-box';
+      input.style.transition = 'border-color 0.2s, background-color 0.2s';
+      
+      // Les couleurs seront appliquées par applyModalStyles
+      
+      // Style pour le focus
+      input.addEventListener('focus', () => {
+        if (isDarkTheme) {
+          input.style.backgroundColor = '#444444';
+          input.style.borderColor = '#666666';
+        } else {
+          input.style.backgroundColor = '#ffffff';
+          input.style.borderColor = '#999999';
+        }
+      });
+      
+      // Style pour la perte de focus
+      input.addEventListener('blur', () => {
+        if (isDarkTheme) {
+          input.style.backgroundColor = '#3a3a3a';
+          input.style.borderColor = '#555555';
+        } else {
+          input.style.backgroundColor = '#f5f5f5';
+          input.style.borderColor = '#dddddd';
+        }
+      });
+      
       modalContent.appendChild(input);
     }
     
     // Conteneur pour les boutons
     const buttonsContainer = document.createElement('div');
     buttonsContainer.className = 'le-chat-plus-modal-buttons';
+    buttonsContainer.style.display = 'flex';
+    buttonsContainer.style.justifyContent = 'flex-end';
+    buttonsContainer.style.gap = '8px';
     
     // Bouton d'annulation
-    const cancelButton = document.createElement('button');
+    cancelButton = document.createElement('button');
     cancelButton.className = 'le-chat-plus-modal-button cancel';
     cancelButton.textContent = options.cancelLabel;
     
+    // Styles pour le bouton d'annulation
+    cancelButton.style.padding = '6px 12px';
+    cancelButton.style.borderRadius = '6px';
+    cancelButton.style.fontSize = '14px';
+    cancelButton.style.cursor = 'pointer';
+    cancelButton.style.transition = 'all 0.2s';
+    
+    // Les couleurs seront appliquées par applyModalStyles
+    
+    // Effet hover pour le bouton d'annulation
+    cancelButton.addEventListener('mouseover', () => {
+      if (isDarkTheme) {
+        cancelButton.style.backgroundColor = '#333333';
+      } else {
+        cancelButton.style.backgroundColor = '#f5f5f5';
+      }
+    });
+    
+    cancelButton.addEventListener('mouseout', () => {
+      cancelButton.style.backgroundColor = 'transparent';
+    });
+    
     // Bouton de confirmation
-    const confirmButton = document.createElement('button');
+    confirmButton = document.createElement('button');
     confirmButton.className = `le-chat-plus-modal-button ${options.isDelete ? 'delete' : 'confirm'}`;
     confirmButton.textContent = options.confirmLabel;
+    
+    // Styles communs pour le bouton de confirmation
+    confirmButton.style.padding = '6px 12px';
+    confirmButton.style.borderRadius = '6px';
+    confirmButton.style.fontSize = '14px';
+    confirmButton.style.cursor = 'pointer';
+    confirmButton.style.transition = 'all 0.2s';
+    
+    // Les couleurs seront appliquées par applyModalStyles
+    
+    // Effet hover pour les boutons
+    if (options.isDelete) {
+      confirmButton.addEventListener('mouseover', () => {
+        if (isDarkTheme) {
+          confirmButton.style.backgroundColor = 'rgba(220, 0, 0, 0.2)';
+        } else {
+          confirmButton.style.backgroundColor = 'rgba(220, 0, 0, 0.1)';
+        }
+      });
+      
+      confirmButton.addEventListener('mouseout', () => {
+        if (isDarkTheme) {
+          confirmButton.style.backgroundColor = 'transparent'; // Rétablir le fond transparent en mode sombre
+        } else {
+          confirmButton.style.backgroundColor = 'transparent'; // Rétablir le fond transparent en mode clair
+        }
+      });
+    } else {
+      confirmButton.addEventListener('mouseover', () => {
+        if (isDarkTheme) {
+          confirmButton.style.backgroundColor = '#444444';
+        } else {
+          confirmButton.style.backgroundColor = '#e5e5e5';
+        }
+      });
+      
+      confirmButton.addEventListener('mouseout', () => {
+        if (isDarkTheme) {
+          confirmButton.style.backgroundColor = '#3a3a3a';
+        } else {
+          confirmButton.style.backgroundColor = '#f0f0f0';
+        }
+      });
+    }
     
     // Assembler les éléments
     buttonsContainer.appendChild(cancelButton);
@@ -481,9 +845,26 @@ function showModal(options: {
     modal.appendChild(modalContent);
     document.body.appendChild(modal);
     
+    // Styles du modal
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.right = '0';
+    modal.style.bottom = '0';
+    modal.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.zIndex = '10000';
+    modal.style.opacity = '0';
+    modal.style.transition = 'opacity 0.2s';
+    
+    // Appliquer les styles initiaux
+    applyModalStyles(isDarkTheme);
+    
     // Gérer les événements
     const close = (result: string | boolean | null) => {
-      modal.classList.remove('visible');
+      modal.style.opacity = '0';
       setTimeout(() => {
         if (modal.parentNode) {
           document.body.removeChild(modal);
@@ -503,7 +884,7 @@ function showModal(options: {
           input.focus();
           input.style.borderColor = '#ff5555';
           setTimeout(() => {
-            input.style.borderColor = '#ddd';
+            input.style.borderColor = isDarkTheme ? '#555555' : '#dddddd';
           }, 800);
         }
       } else {
@@ -533,7 +914,7 @@ function showModal(options: {
     
     // Afficher le modal avec une animation
     requestAnimationFrame(() => {
-      modal.classList.add('visible');
+      modal.style.opacity = '1';
       if (input) input.focus();
     });
   });
@@ -1159,9 +1540,37 @@ async function injectFoldersUI() {
   // Conteneur pour la liste des dossiers
   const foldersList = document.createElement('div');
   foldersList.id = 'le-chat-plus-folders-list';
-  safeSetStyle(foldersList, 'maxHeight', '200px');
-  safeSetStyle(foldersList, 'overflowY', 'auto');
+  foldersList.className = 'le-chat-plus-folders-list-scrollbar'; // Ajout de la classe pour les styles de scrollbar
+  safeSetStyle(foldersList, 'maxHeight', '0');
+  safeSetStyle(foldersList, 'overflow', 'hidden');
+  safeSetStyle(foldersList, 'transition', 'max-height 0.5s ease-in-out'); // Animation plus lente (0.5s au lieu de 0.3s)
+  // Initialisation fermée par défaut
   foldersSection.appendChild(foldersList);
+  
+  // Rendre le titre cliquable
+  safeSetStyle(folderTitle, 'cursor', 'pointer');
+  safeSetStyle(folderTitle, 'user-select', 'none'); // Éviter la sélection du texte au clic
+  
+  // Ajouter une transition pour l'icône de dossier
+  safeSetStyle(folderIcon, 'transition', 'transform 0.5s ease-in-out');
+  
+  // Ajouter l'événement de clic pour afficher/masquer les dossiers
+  folderTitle.addEventListener('click', () => {
+    // Détecter l'état actuel à partir de la maxHeight
+    const isVisible = foldersList.style.maxHeight !== '0px';
+    
+    if (isVisible) {
+      // Fermeture du tiroir
+      foldersList.style.maxHeight = '0';
+      // Rotation de l'icône du dossier à l'état normal
+      safeSetStyle(folderIcon, 'transform', 'rotate(0deg)');
+    } else {
+      // Ouverture du tiroir - calcul dynamique de la hauteur nécessaire
+      foldersList.style.maxHeight = '200px';
+      // Rotation de l'icône du dossier de 20 degrés
+      safeSetStyle(folderIcon, 'transform', 'rotate(20deg)');
+    }
+  });
   
   // Stratégie d'insertion : essayer d'abord après le bouton Pro
   if (proButton) {
@@ -1247,7 +1656,19 @@ async function injectFoldersUI() {
     // Obtenir tous les dossiers
     const folders = await getFolders();
     
-    // Mettre à jour tous les dossiers pour les fermer
+    // Vérifier si tous les dossiers sont déjà fermés
+    const allFoldersClosed = folders.every(folder => !folder.expanded);
+    
+    // Si tous les dossiers sont déjà fermés, fermer le tiroir
+    if (allFoldersClosed) {
+      // Fermeture du tiroir
+      foldersList.style.maxHeight = '0';
+      // Rotation de l'icône du dossier à l'état normal
+      safeSetStyle(folderIcon, 'transform', 'rotate(0deg)');
+      return;
+    }
+    
+    // Sinon, mettre à jour tous les dossiers pour les fermer
     const updatedFolders = folders.map(folder => ({
       ...folder,
       expanded: false
@@ -1315,12 +1736,10 @@ function setupDOMObserver() {
     if (shouldInject || (!isVisible && document.querySelector('a[href^="/chat/"]'))) {
       lastInjectionAttempt = now;
       
-      // Utiliser un délai pour s'assurer que la page a terminé ses modifications DOM
-      setTimeout(() => {
+      // Appeler directement sans délai
         injectFoldersUI().then(() => {
           successfullyInjected = true;
         });
-      }, 500);
     }
   });
   
@@ -1544,7 +1963,7 @@ async function renderFolders(): Promise<void> {
     const expandIcon = document.createElement('span');
     expandIcon.textContent = folder.expanded ? '▼' : '►';
     safeSetStyle(expandIcon, 'marginRight', '5px');
-    safeSetStyle(expandIcon, 'fontSize', '10px');
+    safeSetStyle(expandIcon, 'fontSize', '6px');
     safeSetStyle(expandIcon, 'color', 'var(--text-color-subtle)');
     safeSetStyle(expandIcon, 'transition', 'transform 0.2s');
     
@@ -1862,7 +2281,7 @@ async function renderFolders(): Promise<void> {
         
         // Afficher les boutons d'action au survol
         convItem.addEventListener('mouseenter', () => {
-          safeSetStyle(actionsContainer, 'opacity', '0.6');
+          safeSetStyle(actionsContainer, 'opacity', '1');
         });
         
         convItem.addEventListener('mouseleave', () => {

@@ -12,6 +12,34 @@ const globalStyles = `
   * {
     box-sizing: border-box;
   }
+  
+  /* Styles de scrollbar globaux */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  /* Thème clair - sera surchargé par les styles spécifiques si nécessaire */
+  ::-webkit-scrollbar-track {
+    background: #f0f0f0;
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: #cccccc;
+    border-radius: 4px;
+    border: 1px solid #f0f0f0;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: #aaaaaa;
+  }
+  
+  /* Support de Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #cccccc #f0f0f0;
+  }
 `;
 
 // Types pour l'application
@@ -340,11 +368,11 @@ function IndexPopup() {
         <h3 style={{ 
           margin: "0 0 8px 0",
           fontSize: "11px",
-          color: theme.text
+          color: theme.secondaryText
         }}>
           Statistiques
         </h3>
-        <div style={{ fontSize: "10px", lineHeight: "1.4", color: theme.text }}>
+        <div style={{ fontSize: "10px", lineHeight: "1.4", color: theme.secondaryText }}>
           <div>Nombre de dossiers: <strong>{folders.length}</strong></div>
           <div>Conversations classées: <strong>{totalConversations}</strong></div>
         </div>
@@ -390,17 +418,39 @@ function IndexPopup() {
       {/* Injecter le reset CSS global */}
       <style dangerouslySetInnerHTML={{ __html: globalStyles }} />
       
+      {/* Injecter les styles de scrollbar basés sur le thème */}
+      <style dangerouslySetInnerHTML={{ __html: isDarkMode ? `
+        ::-webkit-scrollbar-track {
+          background: #2a2a2a !important;
+          border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+          background: #555555 !important;
+          border-radius: 4px;
+          border: 1px solid #2a2a2a !important;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+          background: #666666 !important;
+        }
+        
+        * {
+          scrollbar-color: #555555 #2a2a2a !important;
+        }
+      ` : '' }} />
+      
       <h2 style={{ 
         textAlign: "center",
         color: isDarkMode ? theme.proColor : `${theme.proColor}bb`,
         display: "inline-block",
         width: "100%",
-        fontSize: "22px",
+        fontSize: "44px",
         fontWeight: "bold",
-        marginTop: "6px",
-        marginBottom: "12px"
+        marginTop: "0px",
+        marginBottom: "0px"
       }}>
-        Le Chat+
+        LeChat<span style={{ fontSize: "60px", verticalAlign: "middle", position: "relative", top: "-3px" }}>+</span>
       </h2>
       
       {/* Bouton de bascule de thème */}
@@ -461,7 +511,7 @@ function IndexPopup() {
             alignItems: "center",
             marginBottom: "8px"
           }}>
-            <h3 style={{ margin: 0, fontSize: "13px", color: theme.text }}>Mes dossiers</h3>
+            <h3 style={{ margin: 0, fontSize: "13px", color: theme.secondaryText }}>Mes dossiers</h3>
           </div>
           
           {folders.length === 0 ? (
@@ -469,7 +519,7 @@ function IndexPopup() {
               padding: "16px", 
               textAlign: "center", 
               color: theme.secondaryText,
-              backgroundColor: theme.cardBackground,
+              backgroundColor: theme.secondaryText,
               borderRadius: "6px",
               marginBottom: "12px"
             }}>
@@ -479,7 +529,10 @@ function IndexPopup() {
               <div style={{ 
               maxHeight: "160px", 
                 overflowY: "auto",
-              marginBottom: "12px"
+              marginBottom: "12px",
+              // Styles de scrollbar de base sans les styles spécifiques de thème (ils sont gérés globalement)
+              borderRadius: "4px",
+              padding: "0 4px"
               }}>
                 {folders.map(folder => (
                   <div 
@@ -496,7 +549,7 @@ function IndexPopup() {
                       justifyContent: "space-between",
                       alignItems: "center"
                   }}>
-                    <span style={{ fontWeight: "bold", color: theme.text, fontSize: "10px" }}>
+                    <span style={{ fontWeight: "normal", color: theme.secondaryText, fontSize: "10px" }}>
                       {folder.name}
                     </span>
                     <span style={{ 
