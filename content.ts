@@ -1428,8 +1428,30 @@ async function injectFoldersUI() {
   safeSetStyle(folderHeader, 'display', 'flex');
   safeSetStyle(folderHeader, 'justifyContent', 'space-between');
   safeSetStyle(folderHeader, 'alignItems', 'center');
-  safeSetStyle(folderHeader, 'padding', '8px 0px');
-  safeSetStyle(folderHeader, 'borderBottom', '1px solid rgba(0, 0, 0, 0.1)');
+  safeSetStyle(folderHeader, 'padding', '8px 10px'); // Ajout de padding horizontal (10px à droite et à gauche)
+  safeSetStyle(folderHeader, 'borderRadius', '4px');
+  safeSetStyle(folderHeader, 'transition', 'background-color 0.2s ease');
+  safeSetStyle(folderHeader, 'cursor', 'pointer');
+  
+  // Ajouter l'effet de hover avec support pour le thème sombre
+  folderHeader.addEventListener('mouseenter', () => {
+    // Détecter si nous sommes en dark mode
+    const isDarkTheme = document.documentElement.getAttribute('data-theme') === 'dark' || 
+                     document.documentElement.classList.contains('dark') || 
+                     document.body.classList.contains('dark');
+    
+    if (isDarkTheme) {
+      // Couleur de survol pour le mode sombre - plus visible
+      safeSetStyle(folderHeader, 'backgroundColor', 'var(--background-color-secondary, rgba(255, 255, 255, 0.1))');
+    } else {
+      // Couleur de survol pour le mode clair
+      safeSetStyle(folderHeader, 'backgroundColor', 'var(--background-color-muted, rgba(0, 0, 0, 0.05))');
+    }
+  });
+  
+  folderHeader.addEventListener('mouseleave', () => {
+    safeSetStyle(folderHeader, 'backgroundColor', 'transparent');
+  });
   
   const folderTitle = document.createElement('h3');
   safeSetStyle(folderTitle, 'margin', '0');
@@ -1543,33 +1565,62 @@ async function injectFoldersUI() {
   foldersList.className = 'le-chat-plus-folders-list-scrollbar'; // Ajout de la classe pour les styles de scrollbar
   safeSetStyle(foldersList, 'maxHeight', '0');
   safeSetStyle(foldersList, 'overflow', 'hidden');
-  safeSetStyle(foldersList, 'transition', 'max-height 0.5s ease-in-out'); // Animation plus lente (0.5s au lieu de 0.3s)
+  safeSetStyle(foldersList, 'transition', 'max-height 0.3s ease-in-out'); // Animation plus lente (0.5s au lieu de 0.3s)
   // Initialisation fermée par défaut
   foldersSection.appendChild(foldersList);
+  
+  // Ajouter un écouteur pour la fin de transition
+  foldersList.addEventListener('transitionend', () => {
+    // Si la liste est ouverte (maxHeight > 0), activer la scrollbar
+    if (foldersList.style.maxHeight !== '0px') {
+      safeSetStyle(foldersList, 'overflow', 'auto');
+    }
+  });
   
   // Rendre le titre cliquable
   safeSetStyle(folderTitle, 'cursor', 'pointer');
   safeSetStyle(folderTitle, 'user-select', 'none'); // Éviter la sélection du texte au clic
   
   // Ajouter une transition pour l'icône de dossier
-  safeSetStyle(folderIcon, 'transition', 'transform 0.5s ease-in-out');
+  safeSetStyle(folderIcon, 'transition', 'transform 0.3s ease-in-out');
   
-  // Ajouter l'événement de clic pour afficher/masquer les dossiers
-  folderTitle.addEventListener('click', () => {
+  // Fonction pour basculer l'affichage des dossiers
+  const toggleFolderDisplay = () => {
     // Détecter l'état actuel à partir de la maxHeight
     const isVisible = foldersList.style.maxHeight !== '0px';
     
     if (isVisible) {
-      // Fermeture du tiroir
+      // Fermeture du tiroir - d'abord mettre overflow hidden
+      safeSetStyle(foldersList, 'overflow', 'hidden');
       foldersList.style.maxHeight = '0';
       // Rotation de l'icône du dossier à l'état normal
       safeSetStyle(folderIcon, 'transform', 'rotate(0deg)');
+      // Changer l'icône du bouton collapseAll pour pointer vers le bas
+      collapseAllButton.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="5 9 12 16 19 9"></polyline>
+      </svg>`;
+      collapseAllButton.title = 'Ouvrir la liste des dossiers';
     } else {
       // Ouverture du tiroir - calcul dynamique de la hauteur nécessaire
       foldersList.style.maxHeight = '200px';
+      // On ne met plus le timeout ici, c'est géré par l'événement transitionend
       // Rotation de l'icône du dossier de 20 degrés
       safeSetStyle(folderIcon, 'transform', 'rotate(20deg)');
+      // Remettre l'icône du bouton collapseAll pour pointer vers le haut
+      collapseAllButton.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="19 15 12 8 5 15"></polyline>
+      </svg>`;
+      collapseAllButton.title = 'Fermer tous les dossiers';
     }
+  };
+
+  // Supprimer l'ancien écouteur du titre et ajouter un écouteur pour l'en-tête complet
+  folderHeader.addEventListener('click', (e) => {
+    // Empêcher les clics sur les boutons d'action de déclencher l'ouverture/fermeture
+    if (buttonsContainer.contains(e.target as Node)) {
+      return;
+    }
+    toggleFolderDisplay();
   });
   
   // Stratégie d'insertion : essayer d'abord après le bouton Pro
@@ -1631,7 +1682,21 @@ async function injectFoldersUI() {
     const folderName = await showFolderCreateModal();
     if (folderName) {
       await createFolder(folderName);
+      
+      // Ouvrir la liste de dossiers si elle est fermée
+      if (foldersList.style.maxHeight === '0px' || !foldersList.style.maxHeight) {
+        foldersList.style.maxHeight = '200px';
+      }
+      
+      // Rafraîchir l'affichage des dossiers
       await renderFolders();
+      
+      // Après le rendu terminé, s'assurer que l'icône et les autres éléments sont synchronisés
+      safeSetStyle(folderIcon, 'transform', 'rotate(20deg)');
+      collapseAllButton.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="19 15 12 8 5 15"></polyline>
+      </svg>`;
+      collapseAllButton.title = 'Fermer tous les dossiers';
     }
   });
   
@@ -1653,6 +1718,23 @@ async function injectFoldersUI() {
   
   // Ajouter gestionnaire d'événements pour le bouton de fermeture de tous les dossiers
   collapseAllButton.addEventListener('click', async () => {
+    // Obtenir l'état actuel de la liste
+    const isListVisible = foldersList.style.maxHeight !== '0px';
+    
+    // Si la liste est fermée, on l'ouvre simplement
+    if (!isListVisible) {
+      foldersList.style.maxHeight = '200px';
+      // On ne met plus le timeout ici, c'est géré par l'événement transitionend
+      safeSetStyle(folderIcon, 'transform', 'rotate(20deg)');
+      // Changer l'icône pour fermer tous les dossiers
+      collapseAllButton.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="19 15 12 8 5 15"></polyline>
+      </svg>`;
+      collapseAllButton.title = 'Fermer tous les dossiers';
+      return;
+    }
+    
+    // Si la liste est ouverte, on agit sur les dossiers
     // Obtenir tous les dossiers
     const folders = await getFolders();
     
@@ -1661,10 +1743,16 @@ async function injectFoldersUI() {
     
     // Si tous les dossiers sont déjà fermés, fermer le tiroir
     if (allFoldersClosed) {
-      // Fermeture du tiroir
+      // Fermeture du tiroir - d'abord mettre overflow hidden
+      safeSetStyle(foldersList, 'overflow', 'hidden');
       foldersList.style.maxHeight = '0';
       // Rotation de l'icône du dossier à l'état normal
       safeSetStyle(folderIcon, 'transform', 'rotate(0deg)');
+      // Changer l'icône pour ouvrir la liste de dossiers
+      collapseAllButton.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="5 9 12 16 19 9"></polyline>
+      </svg>`;
+      collapseAllButton.title = 'Ouvrir la liste des dossiers';
       return;
     }
     
