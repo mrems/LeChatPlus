@@ -1,57 +1,98 @@
-# Le Chat+ Extension pour Mistral AI
+# Le Chat+
 
-Une extension Chrome qui intègre des fonctionnalités d'organisation directement dans l'interface de Mistral AI Chat, vous permettant de classer vos conversations dans des dossiers personnalisés.
+Une extension de navigateur pour améliorer l'interface utilisateur de [Mistral AI](https://chat.mistral.ai/).
 
 ## Fonctionnalités
 
-- **Intégration native** : Ajoute une section "Mes Dossiers" directement dans l'interface Mistral AI
-- **Création de dossiers** : Organisez vos conversations par thème, projet ou importance
-- **Ajout facile** : Ajoutez la conversation active à n'importe quel dossier en un clic
-- **Navigation intuitive** : Accédez rapidement à vos conversations classées
-- **Popup informatif** : Consultez des statistiques et gérez vos dossiers depuis la popup de l'extension
+- **Organisation par dossiers** : Organisez vos conversations dans des dossiers personnalisés pour un accès plus facile
+- **Modèles de prompts** : Ajoutez et utilisez des modèles de prompts pour des interactions plus rapides
+- **Thème amélioré** : Support de thèmes clairs et sombres
+- **Interface utilisateur améliorée** : Navigation simplifiée entre les conversations
 
 ## Installation
 
-1. Clonez ce dépôt
-2. Exécutez `pnpm install` pour installer les dépendances
-3. Exécutez `pnpm dev` pour lancer le serveur de développement
-4. Ouvrez Chrome et allez à `chrome://extensions/`
-5. Activez le "Mode développeur"
-6. Cliquez sur "Charger l'extension non empaquetée" et sélectionnez le dossier `build/chrome-mv3-dev`
+### Installation depuis les sources
 
-## Comment utiliser
+1. Clonez ce dépôt :
+   ```bash
+   git clone https://github.com/votretutilisateur/le-chat-plus.git
+   ```
 
-1. Naviguez vers [chat.mistral.ai](https://chat.mistral.ai/chat)
-2. L'extension ajoute automatiquement une section "Mes Dossiers" dans la colonne de gauche
-3. Cliquez sur le bouton "+" pour créer un nouveau dossier
-4. Pour ajouter une conversation au dossier, ouvrez-la, cliquez sur le dossier puis sur "Ajouter conversation"
-5. Utilisez les triangles pour plier/déplier les dossiers et voir leur contenu
-6. Cliquez sur une conversation dans un dossier pour l'ouvrir
+2. Ouvrez Chrome et accédez à `chrome://extensions/`
 
-## Construction pour la production
+3. Activez le "Mode développeur" en haut à droite
 
-Pour créer une version de production, exécutez :
+4. Cliquez sur "Charger l'extension non empaquetée" et sélectionnez le dossier du projet
+
+L'extension est maintenant installée et active sur le site chat.mistral.ai.
+
+## Structure du projet
 
 ```
-pnpm build
+le-chat-plus/
+│
+├── assets/                # Ressources statiques (icônes, images)
+│   └── icons/             # Icônes de l'extension
+│
+├── src/                   # Code source
+│   ├── modules/           # Modules fonctionnels
+│   │   ├── folders.ts     # Gestion des dossiers de conversations
+│   │   ├── prompts.ts     # Gestion des modèles de prompts
+│   │   ├── theme.ts       # Gestion des thèmes
+│   │   └── ui-renderer.ts # Rendu de l'interface utilisateur
+│   │
+│   ├── utils/             # Utilitaires
+│   │   ├── dom.ts         # Manipulation du DOM
+│   │   ├── storage.ts     # Gestion du stockage
+│   │   └── types.ts       # Types communs
+│   │
+│   ├── content.ts         # Point d'entrée pour le script de contenu
+│   ├── background.ts      # Script d'arrière-plan
+│   └── popup.ts           # Script pour la popup
+│
+├── styles/                # Styles CSS
+│   ├── content.css        # Styles pour le script de contenu
+│   └── popup.css          # Styles pour la popup
+│
+├── manifest.json          # Manifeste de l'extension
+├── popup.html             # Page HTML pour la popup
+└── README.md              # Documentation
 ```
 
-La version de production sera disponible dans le dossier `build/chrome-mv3-prod`.
+## Développement
 
-## Technologie
+### Prérequis
 
-Cette extension est construite avec [Plasmo Framework](https://docs.plasmo.com/) et utilise :
+- Node.js et npm
 
-- React pour l'interface popup
-- TypeScript pour le typage statique
-- Storage API de Plasmo pour le stockage des données
-- DOM Manipulation pour l'injection dans l'interface Mistral AI
-- MutationObserver pour détecter les changements de page
+### Installation des dépendances
 
-## Auteur
+```bash
+npm install
+```
 
-Pastaga
+### Construction du projet
+
+```bash
+npm run build
+```
+
+### Tests
+
+```bash
+npm test
+```
 
 ## Licence
 
-MIT
+Ce projet est sous licence MIT. Voir le fichier LICENSE pour plus de détails.
+
+## Contribuer
+
+Les contributions sont les bienvenues ! N'hésitez pas à ouvrir une issue ou à soumettre une pull request.
+
+1. Forkez le projet
+2. Créez votre branche de fonctionnalité (`git checkout -b feature/amazing-feature`)
+3. Committez vos changements (`git commit -m 'Add some amazing feature'`)
+4. Poussez vers la branche (`git push origin feature/amazing-feature`)
+5. Ouvrez une Pull Request
