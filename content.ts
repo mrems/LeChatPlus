@@ -1511,9 +1511,9 @@ async function injectFoldersUI() {
   // Bouton pour fermer tous les dossiers
   const collapseAllButton = document.createElement('button');
   collapseAllButton.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <polyline points="19 15 12 8 5 15"></polyline>
+    <polyline points="5 9 12 16 19 9"></polyline>
   </svg>`;
-  collapseAllButton.title = 'Fermer tous les dossiers';
+  collapseAllButton.title = 'Ouvrir la liste des dossiers';
   safeSetStyle(collapseAllButton, 'background', 'var(--background-color-badge-gray)');
   safeSetStyle(collapseAllButton, 'color', 'var(--text-color-subtle)');
   safeSetStyle(collapseAllButton, 'border', '1px solid var(--background-color-badge-gray)');
@@ -1529,6 +1529,7 @@ async function injectFoldersUI() {
   safeSetStyle(collapseAllButton, 'transition', 'all 0.2s');
   safeSetStyle(collapseAllButton, 'boxShadow', 'none');
   safeSetStyle(collapseAllButton, 'marginRight', '3px');
+  safeSetStyle(collapseAllButton, 'padding', '0'); // S'assurer qu'il n'y a pas de padding qui réduit la zone cliquable
   
   // Ajouter les boutons dans l'ordre souhaité
   buttonsContainer.appendChild(refreshButton);
@@ -1717,7 +1718,10 @@ async function injectFoldersUI() {
   });
   
   // Ajouter gestionnaire d'événements pour le bouton de fermeture de tous les dossiers
-  collapseAllButton.addEventListener('click', async () => {
+  collapseAllButton.addEventListener('click', async (e) => {
+    // Empêcher la propagation pour éviter des conflits avec d'autres gestionnaires
+    e.stopPropagation();
+    
     // Obtenir l'état actuel de la liste
     const isListVisible = foldersList.style.maxHeight !== '0px';
     
