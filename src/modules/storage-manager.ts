@@ -1,5 +1,9 @@
 import { Storage } from "@plasmohq/storage"
 
+// Clés de stockage
+export const FOLDERS_KEY = 'folders';
+export const STANDALONE_CONVERSATIONS_KEY = 'standalone_conversations';
+
 // Initialisation du stockage
 let storageInstance: Storage | null = null
 

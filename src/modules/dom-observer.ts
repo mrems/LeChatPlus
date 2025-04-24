@@ -202,23 +202,127 @@ export class ThemeChangeObserver {
  * Écouteur pour les messages de l'extension
  */
 export function setupExtensionMessageListener(): void {
+  try {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      try {
+        console.log("Message reçu dans le script de contenu:", message);
+        
     if (message.action === "getConversationInfo") {
+          try {
       const conversationId = getCurrentConversationId();
       const title = getConversationTitle();
       
       sendResponse({
         id: conversationId,
         title: title,
-        url: window.location.href
+              url: window.location.href,
+              success: true
+            });
+          } catch (error) {
+            console.error("Erreur lors de la récupération des informations de conversation:", error);
+            sendResponse({
+              error: "Erreur lors de la récupération des informations de conversation",
+              errorDetails: error.message,
+              success: false
       });
+          }
       
       return true;
     } else if (message.action === "refreshFolders") {
-      renderFolders();
+          try {
+            renderFolders().then(() => {
+              sendResponse({ success: true });
+            }).catch(error => {
+              console.error("Erreur lors du rafraîchissement des dossiers:", error);
+              sendResponse({ 
+                success: false, 
+                error: "Erreur lors du rafraîchissement des dossiers",
+                errorDetails: error.message
+              });
+            });
+          } catch (error) {
+            console.error("Erreur lors du rafraîchissement des dossiers:", error);
+            sendResponse({ 
+              success: false, 
+              error: "Erreur lors du rafraîchissement des dossiers",
+              errorDetails: error.message
+            });
+          }
+          
+          return true;
+        } else if (message.action === "getTheme") {
+          // Récupérer le thème actuel
+          try {
+            const isDarkTheme = document.documentElement.getAttribute('data-theme') === 'dark' || 
+                               document.documentElement.classList.contains('dark') || 
+                               document.body.classList.contains('dark');
+            
+            sendResponse({ 
+              success: true, 
+              isDarkMode: isDarkTheme,
+              timestamp: Date.now()
+            });
+          } catch (error) {
+            console.error("Erreur lors de la récupération du thème:", error);
+            sendResponse({ 
+              success: false, 
+              error: "Erreur lors de la récupération du thème",
+              errorDetails: error.message
+            });
+          }
+          
+          return true;
+        } else if (message.action === "themeChanged") {
+          // Le popup nous informe d'un changement de thème
+          try {
+            console.log("Notification de changement de thème reçue:", message.isDarkMode ? "Sombre" : "Clair");
+            sendResponse({ success: true, received: true });
+          } catch (error) {
+            console.error("Erreur lors du traitement du changement de thème:", error);
+            sendResponse({ 
+              success: false, 
+              error: "Erreur lors du traitement du changement de thème",
+              errorDetails: error.message
+            });
+          }
+          
+          return true;
+        } else if (message.action === "ping") {
+          // Message simple pour vérifier la connexion
+          sendResponse({ success: true, message: "pong" });
+          return true;
+        }
+        
+        // Message non géré
+        sendResponse({ success: false, error: "Message non géré" });
+        return true;
+      } catch (error) {
+        console.error("Erreur lors du traitement du message:", error);
+        sendResponse({ 
+          success: false, 
+          error: "Erreur lors du traitement du message",
+          errorDetails: error.message
+        });
       return true;
     }
   });
+    
+    // Informer le background script que le listener est prêt
+    try {
+      chrome.runtime.sendMessage({ 
+        action: "contentScriptReady", 
+        url: window.location.href
+      }).catch(error => {
+        // Ignorer les erreurs silencieusement - le background script pourrait ne pas être prêt
+        console.log("Note: Le background script n'est peut-être pas encore prêt");
+      });
+    } catch (error) {
+      // Ignorer les erreurs silencieusement
+      console.log("Note: Impossible de notifier le background script");
+    }
   
   console.log("Écouteur de messages de l'extension configuré avec succès");
+  } catch (error) {
+    console.error("Erreur lors de la configuration de l'écouteur de messages:", error);
+  }
 } 

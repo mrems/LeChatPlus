@@ -1,6 +1,7 @@
-import type { ConversationRef } from './types'
-import { getValue, setValue } from './storage-manager'
+import type { ConversationRef, StandaloneConversation } from './types'
+import { getValue, setValue, STANDALONE_CONVERSATIONS_KEY } from './storage-manager'
 import { getFolders } from './folder-operations'
+import { renderFolders } from './ui-renderer'
 
 /**
  * Obtenir l'ID de la conversation active
@@ -171,4 +172,93 @@ export async function getConversationsInFolder(folderId: string): Promise<Conver
 export async function isConversationInFolder(folderId: string, conversationId: string): Promise<boolean> {
   const conversations = await getConversationsInFolder(folderId);
   return conversations.some(c => c.id === conversationId);
+}
+
+/**
+ * Ajouter une conversation autonome dans la section des dossiers
+ * @param conversation Objet contenant les infos de la conversation
+ * @returns Promise<void>
+ */
+export async function addStandaloneConversation(
+  conversation: {id: string, title: string, url: string}
+): Promise<void> {
+  // Récupérer les conversations autonomes actuelles
+  const conversations = await getValue<StandaloneConversation[]>(STANDALONE_CONVERSATIONS_KEY) || [];
+  
+  // Vérifier si la conversation est déjà présente
+  const existingIndex = conversations.findIndex(c => c.id === conversation.id);
+  if (existingIndex !== -1) {
+    // Si la conversation existe déjà, ne rien faire
+    return;
+  }
+  
+  // Ajouter la nouvelle conversation
+  const newConversation: StandaloneConversation = {
+    id: conversation.id,
+    title: conversation.title,
+    url: conversation.url,
+    addedAt: Date.now()
+  };
+  
+  conversations.push(newConversation);
+  
+  // Sauvegarder les modifications
+  await setValue(STANDALONE_CONVERSATIONS_KEY, conversations);
+}
+
+/**
+ * Supprimer une conversation autonome
+ * @param conversationId ID de la conversation à supprimer
+ * @returns Promise<void>
+ */
+export async function removeStandaloneConversation(conversationId: string): Promise<void> {
+  // Récupérer les conversations autonomes actuelles
+  const conversations = await getValue<StandaloneConversation[]>(STANDALONE_CONVERSATIONS_KEY) || [];
+  
+  // Filtrer pour supprimer la conversation
+  const updatedConversations = conversations.filter(c => c.id !== conversationId);
+  
+  // Sauvegarder les modifications
+  await setValue(STANDALONE_CONVERSATIONS_KEY, updatedConversations);
+}
+
+/**
+ * Récupérer toutes les conversations autonomes
+ * @returns Promise<StandaloneConversation[]>
+ */
+export async function getStandaloneConversations(): Promise<StandaloneConversation[]> {
+  const conversations = await getValue<StandaloneConversation[]>(STANDALONE_CONVERSATIONS_KEY);
+  return conversations || [];
+}
+
+/**
+ * Réorganiser une conversation autonome
+ * @param conversationId ID de la conversation
+ * @param newPosition Nouvelle position
+ * @returns Promise<void>
+ */
+export async function reorderStandaloneConversation(conversationId: string, newPosition: number): Promise<void> {
+  const conversations = await getValue<StandaloneConversation[]>(STANDALONE_CONVERSATIONS_KEY) || [];
+  
+  // Trouver l'index actuel de la conversation
+  const currentIndex = conversations.findIndex(c => c.id === conversationId);
+  if (currentIndex === -1) return; // La conversation n'existe pas
+  
+  // S'assurer que la nouvelle position est valide
+  if (newPosition < 0) newPosition = 0;
+  if (newPosition >= conversations.length) newPosition = conversations.length - 1;
+  
+  // Si la position ne change pas, ne rien faire
+  if (newPosition === currentIndex) return;
+  
+  // Déplacer la conversation à sa nouvelle position
+  const [conversationToMove] = conversations.splice(currentIndex, 1);
+  conversations.splice(newPosition, 0, conversationToMove);
+  
+  // Sauvegarder l'ordre mis à jour
+  await setValue(STANDALONE_CONVERSATIONS_KEY, conversations);
+  
+  // Rafraîchir l'interface
+  const { renderFolders } = await import('./ui-renderer');
+  await renderFolders();
 } 

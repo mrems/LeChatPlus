@@ -100,6 +100,115 @@ const darkTheme: ThemeColors = {
   proColor: "#eb3a0b"
 }
 
+// Ajouter ces fonctions utilitaires pour la communication entre les composants de l'extension
+// avant la fonction IndexPopup
+
+/**
+ * Envoie un message au script de contenu via le background script de manière sécurisée
+ * en gérant les erreurs de communication
+ */
+const safelyMessagingContentScript = async (message: any): Promise<any> => {
+  try {
+    // Vérifier d'abord si le contexte de l'extension est valide
+    if (!checkExtensionContextValidity()) {
+      return { 
+        success: false, 
+        error: "Le contexte de l'extension est invalide. Veuillez actualiser la page." 
+      };
+    }
+    
+    // Vérifier d'abord si nous pouvons accéder directement au contenu actif
+    return new Promise((resolve) => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (!tabs.length) {
+          resolve({ success: false, error: "Aucun onglet actif trouvé" });
+          return;
+        }
+        
+        const tabId = tabs[0].id;
+        
+        // Essayer d'envoyer le message directement
+        chrome.tabs.sendMessage(
+          tabId,
+          { ...message, timestamp: Date.now() },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              // En cas d'erreur, essayer de relayer le message via le background script
+              chrome.runtime.sendMessage(
+                {
+                  action: "relayToContentScript",
+                  originalMessage: message,
+                  tabId
+                },
+                (relayResponse) => {
+                  if (chrome.runtime.lastError) {
+                    resolve({ 
+                      success: false, 
+                      error: "Erreur de communication avec la page Mistral"
+                    });
+                  } else {
+                    resolve(relayResponse || { success: false, error: "Aucune réponse reçue" });
+                  }
+                }
+              );
+            } else {
+              resolve(response || { success: false, error: "Aucune réponse reçue" });
+            }
+          }
+        );
+      });
+    });
+  } catch (error) {
+    return { success: false, error: "Erreur de communication" };
+  }
+};
+
+/**
+ * Vérifie si le contexte de l'extension est valide et tente de récupérer si nécessaire
+ * @returns Un booléen indiquant si le contexte semble valide
+ */
+const checkExtensionContextValidity = (): boolean => {
+  try {
+    // Vérifier si on peut accéder aux API Chrome
+    if (typeof chrome === 'undefined' || !chrome.runtime) {
+      // Afficher un message à l'utilisateur
+      const errorMessage = document.createElement('div');
+      errorMessage.style.padding = '10px';
+      errorMessage.style.marginTop = '10px';
+      errorMessage.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
+      errorMessage.style.borderRadius = '5px';
+      errorMessage.style.color = '#d32f2f';
+      errorMessage.style.fontSize = '12px';
+      errorMessage.style.textAlign = 'center';
+      
+      errorMessage.innerHTML = `
+        Le contexte de l'extension a été invalidé.<br>
+        <button 
+          style="margin-top: 8px; padding: 5px 10px; background: #d32f2f; color: white; border: none; border-radius: 3px; cursor: pointer;"
+          onclick="window.location.reload()">
+          Actualiser la page
+        </button>
+      `;
+      
+      // Insérer le message dans le DOM du popup
+      try {
+        const root = document.getElementById('__plasmo');
+        if (root) {
+          root.prepend(errorMessage);
+        }
+      } catch (domError) {
+        // Ignorer les erreurs DOM
+      }
+      
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
 function IndexPopup() {
   const [folders, setFolders] = useState<Folder[]>([])
   const [totalConversations, setTotalConversations] = useState(0)
@@ -107,15 +216,107 @@ function IndexPopup() {
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [theme, setTheme] = useState<ThemeColors>(lightTheme)
 
-  // Basculer manuellement entre les thèmes clair et sombre
+  // Vérifier si le contexte de l'extension est valide au démarrage du composant
+  const [contextValid, setContextValid] = useState<boolean>(checkExtensionContextValidity());
+
+  // Fonction auxiliaire pour mettre à jour le compteur de conversations
+  const updateTotalConversations = (folders: Folder[]) => {
+    let total = 0;
+    for (const folder of folders) {
+      total += folder.conversationCount;
+    }
+    setTotalConversations(total);
+  };
+  
+  // Fonction auxiliaire pour charger les dossiers depuis le stockage
+  const loadFoldersFromStorage = async () => {
+    try {
+      // Essayer les deux méthodes de stockage pour maximiser les chances de succès
+      
+      // 1. Essayer d'abord avec @plasmohq/storage (utilisé par content.ts)
+      try {
+        const { Storage } = await import("@plasmohq/storage");
+        const storage = new Storage();
+        const storedFolders = await storage.get<Folder[]>("folders") || [] as Folder[];
+        
+        if (storedFolders && storedFolders.length > 0) {
+          console.log("✅ Dossiers chargés depuis @plasmohq/storage:", storedFolders.length, "dossiers trouvés");
+          setFolders(storedFolders);
+          updateTotalConversations(storedFolders);
+          return;
+        }
+      } catch (storageError) {
+        console.log("⚠️ Erreur avec @plasmohq/storage, essai avec chrome.storage.local...", storageError);
+      }
+      
+      // 2. Essayer ensuite avec chrome.storage.local
+      const foldersResult = await chrome.storage.local.get("folders");
+      const storedFolders = foldersResult.folders || [] as Folder[];
+      console.log("✅ Dossiers chargés depuis chrome.storage.local:", storedFolders.length, "dossiers trouvés");
+      setFolders(storedFolders);
+      updateTotalConversations(storedFolders);
+    } catch (error) {
+      console.error("❌ Erreur lors du chargement des dossiers:", error);
+    }
+  };
+
+  // Fonction pour rafraîchir les dossiers en communiquant avec le content script
+  const refreshFolders = async () => {
+    setLoading(true);
+    
+    try {
+      // Utiliser la fonction sécurisée pour communiquer avec le script de contenu
+      const response = await safelyMessagingContentScript({
+        action: "refreshFolders"
+      });
+      
+      // Charger les dossiers depuis le stockage local
+      await loadFoldersFromStorage();
+      
+      setLoading(false);
+    } catch (error) {
+      setLoading(false);
+    }
+  };
+  
+  // Fonction pour chercher et modifier les logs dans toggleTheme
   const toggleTheme = async () => {
+    try {
+      // Vérifier d'abord si le contexte de l'extension est valide
+      if (!checkExtensionContextValidity()) {
+        return;
+      }
+      
     const newDarkMode = !isDarkMode
     setIsDarkMode(newDarkMode)
     setTheme(newDarkMode ? darkTheme : lightTheme)
+      
     // Sauvegarder la préférence de thème et marquer comme choix explicite de l'utilisateur
-    await chrome.storage.local.set({ prefersDarkMode: newDarkMode })
-    await chrome.storage.local.set({ userExplicitlySetTheme: true })
-    console.log("🔀 Utilisateur a basculé manuellement vers le thème:", newDarkMode ? "Sombre" : "Clair");
+      await Promise.all([
+        chrome.storage.local.set({ prefersDarkMode: newDarkMode }),
+        chrome.storage.local.set({ userExplicitlySetTheme: true })
+      ]);
+      
+      // Tenter de notifier le script de contenu du changement de thème de façon sécurisée
+      try {
+        // Utiliser notre fonction sécurisée pour éviter les erreurs "Receiving end does not exist"
+        await safelyMessagingContentScript({
+          action: "themeChanged",
+          isDarkMode: newDarkMode,
+          source: "popup",
+          timestamp: Date.now()
+        }).catch(() => {
+          // Ignorer les erreurs silencieusement
+        });
+      } catch (error) {
+        // Ignorer les erreurs de communication - le thème sera synchronisé à la prochaine ouverture
+      }
+    } catch (error) {
+      // Assurer que l'interface reste cohérente même en cas d'erreur
+      const fallbackDarkMode = !isDarkMode; // Créer une nouvelle variable locale
+      setIsDarkMode(fallbackDarkMode);
+      setTheme(fallbackDarkMode ? darkTheme : lightTheme);
+    }
   }
 
   // Détecter le thème et charger les données au démarrage
@@ -236,29 +437,15 @@ function IndexPopup() {
     chrome.storage.onChanged.addListener(handleStorageChange);
     
     // Demander le thème actuel après un délai
-    setTimeout(() => {
-      console.log("🔍 Demande du thème actuel au script de contenu...");
-      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-        if (tabs[0]?.id && tabs[0]?.url?.includes("chat.mistral.ai")) {
-          try {
-            chrome.tabs.sendMessage(
-              tabs[0].id, 
-              {action: "getTheme", timestamp: Date.now()}, 
-              response => {
-                if (chrome.runtime.lastError) {
-                  console.error("❌ Erreur de communication:", chrome.runtime.lastError.message);
-                } else if (response && response.success) {
-                  console.log("✅ Réponse reçue du script de contenu:", response);
-                }
-              }
-            );
+    setTimeout(async () => {
+      try {
+        const response = await safelyMessagingContentScript({
+          action: "getTheme",
+          timestamp: Date.now()
+        });
           } catch (error) {
-            console.error("❌ Exception lors de l'envoi du message:", error);
-          }
-        } else {
-          console.log("⚠️ Aucun onglet Mistral actif trouvé");
+        // Ignorer les erreurs silencieusement
         }
-      });
     }, 500);
     
     // Nettoyer les écouteurs lors du démontage du composant
@@ -268,82 +455,26 @@ function IndexPopup() {
     };
   }, [])
 
-  // Fonction pour rafraîchir les dossiers en communiquant avec le content script
-  const refreshFolders = async () => {
-    try {
-      console.log("🔄 Rafraîchissement des dossiers...");
+  // Ajouter cet effet useEffect après les autres effets pour surveiller la validité du contexte
+  useEffect(() => {
+    // Ne pas exécuter si le contexte est déjà invalide
+    if (!contextValid) return;
+    
+    // Vérifier périodiquement si le contexte est toujours valide
+    const intervalId = setInterval(() => {
+      const isValid = checkExtensionContextValidity();
       
-      // D'abord, essayer de communiquer avec le content script
-      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-        if (tabs[0]?.id && tabs[0]?.url?.includes("chat.mistral.ai")) {
-          console.log("📡 Envoi de la demande de rafraîchissement au content script...");
-          
-          chrome.tabs.sendMessage(
-            tabs[0].id, 
-            {action: "refreshFolders", timestamp: Date.now()}, 
-            response => {
-              if (chrome.runtime.lastError) {
-                console.error("❌ Erreur de communication avec le content script:", chrome.runtime.lastError);
-                // Fallback: charger directement depuis le stockage
-                loadFoldersFromStorage();
-              } else {
-                console.log("✅ Content script a rafraîchi les dossiers, chargement depuis le stockage...");
-                // Même si le content script répond correctement, on doit quand même charger les dossiers depuis le stockage
-                loadFoldersFromStorage();
-              }
-            }
-          );
-        } else {
-          console.log("⚠️ Aucun onglet Mistral actif, chargement direct depuis le stockage...");
-          loadFoldersFromStorage();
+      // Si le contexte est devenu invalide, mettre à jour l'état
+      if (!isValid && contextValid) {
+        setContextValid(false);
         }
-      });
-    } catch (error) {
-      console.error("❌ Erreur lors du rafraîchissement des dossiers:", error);
-      loadFoldersFromStorage(); // Fallback
-    }
-  };
-  
-  // Fonction auxiliaire pour charger les dossiers depuis le stockage
-  const loadFoldersFromStorage = async () => {
-    try {
-      // Essayer les deux méthodes de stockage pour maximiser les chances de succès
-      
-      // 1. Essayer d'abord avec @plasmohq/storage (utilisé par content.ts)
-      try {
-        const { Storage } = await import("@plasmohq/storage");
-        const storage = new Storage();
-        const storedFolders = await storage.get<Folder[]>("folders") || [] as Folder[];
-        
-        if (storedFolders && storedFolders.length > 0) {
-          console.log("✅ Dossiers chargés depuis @plasmohq/storage:", storedFolders.length, "dossiers trouvés");
-          setFolders(storedFolders);
-          updateTotalConversations(storedFolders);
-          return;
-        }
-      } catch (storageError) {
-        console.log("⚠️ Erreur avec @plasmohq/storage, essai avec chrome.storage.local...", storageError);
-      }
-      
-      // 2. Essayer ensuite avec chrome.storage.local
-      const foldersResult = await chrome.storage.local.get("folders");
-      const storedFolders = foldersResult.folders || [] as Folder[];
-      console.log("✅ Dossiers chargés depuis chrome.storage.local:", storedFolders.length, "dossiers trouvés");
-      setFolders(storedFolders);
-      updateTotalConversations(storedFolders);
-    } catch (error) {
-      console.error("❌ Erreur lors du chargement des dossiers:", error);
-    }
-  };
-  
-  // Fonction auxiliaire pour mettre à jour le compteur de conversations
-  const updateTotalConversations = (folders: Folder[]) => {
-    let total = 0;
-    for (const folder of folders) {
-      total += folder.conversationCount;
-    }
-    setTotalConversations(total);
-  };
+    }, 5000); // Vérifier toutes les 5 secondes
+    
+    // Nettoyer l'intervalle lors du démontage du composant
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [contextValid]); // Dépendance à contextValid
 
   // Naviguer vers la page Mistral AI
   const goToMistral = () => {
@@ -393,12 +524,20 @@ function IndexPopup() {
         setIsDarkMode(themeData.pageIsDarkMode);
         setTheme(themeData.pageIsDarkMode ? darkTheme : lightTheme);
       } else {
-        // Demander le thème actuel au script de contenu
-        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-          if (tabs[0]?.id && tabs[0]?.url?.includes("chat.mistral.ai")) {
-            chrome.tabs.sendMessage(tabs[0].id, {action: "getTheme", timestamp: Date.now()});
+        // Demander le thème actuel au script de contenu de façon sécurisée
+        try {
+          const response = await safelyMessagingContentScript({
+            action: "getTheme"
+          });
+          
+          if (response && response.success && response.isDarkMode !== undefined) {
+            console.log("✅ Thème récupéré du content script:", response.isDarkMode ? "Sombre" : "Clair");
+            setIsDarkMode(response.isDarkMode);
+            setTheme(response.isDarkMode ? darkTheme : lightTheme);
           }
-        });
+        } catch (error) {
+          console.error("❌ Erreur lors de la récupération du thème:", error);
+          }
       }
     } catch (error) {
       console.error("❌ Erreur lors de la réinitialisation de la préférence:", error);
@@ -439,6 +578,34 @@ function IndexPopup() {
           scrollbar-color: #555555 #2a2a2a !important;
         }
       ` : '' }} />
+      
+      {/* Afficher un message d'erreur si le contexte est invalide */}
+      {!contextValid && (
+        <div style={{
+          padding: '10px',
+          margin: '10px 0',
+          backgroundColor: 'rgba(255, 0, 0, 0.1)',
+          borderRadius: '5px',
+          color: '#d32f2f',
+          fontSize: '12px',
+          textAlign: 'center'
+        }}>
+          <p>Le contexte de l'extension a été invalidé.</p>
+          <button 
+            onClick={() => window.location.reload()}
+            style={{
+              marginTop: '8px', 
+              padding: '5px 10px', 
+              background: '#d32f2f', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '3px', 
+              cursor: 'pointer'
+            }}>
+            Actualiser la page
+          </button>
+        </div>
+      )}
       
       <h2 style={{ 
         textAlign: "center",
@@ -519,7 +686,7 @@ function IndexPopup() {
               padding: "16px", 
               textAlign: "center", 
               color: theme.secondaryText,
-              backgroundColor: theme.secondaryText,
+              backgroundColor: theme.cardBackground,
               borderRadius: "6px",
               marginBottom: "12px"
             }}>

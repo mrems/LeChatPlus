@@ -19,4 +19,14 @@ export interface Folder {
   createdAt: number
   conversationCount: number
   expanded?: boolean
+}
+
+/**
+ * Structure d'une conversation individuelle affichée dans la section des dossiers
+ */
+export interface StandaloneConversation {
+  id: string
+  title: string
+  url: string
+  addedAt: number
 } 

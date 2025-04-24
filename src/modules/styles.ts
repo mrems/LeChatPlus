@@ -128,10 +128,11 @@ export const folderStyles = `
   content: '';
   position: absolute;
   top: -2px;
-  left: 0;
+  left: 10px;
   right: 0;
-  height: 2px;
-  background-color: var(--surface-primary, #6366f1);
+  height: 1px;
+  width: 20%;
+  background-color: var(--text-color-muted, #6366f1);
   border-radius: 1px;
 }
 
@@ -139,26 +140,15 @@ export const folderStyles = `
   content: '';
   position: absolute;
   bottom: -2px;
-  left: 0;
+  left: 10px;
   right: 0;
-  height: 2px;
-  background-color: var(--surface-primary, #6366f1);
+  height: 1px;
+  width: 20%;
+  background-color: var(--text-color-muted, #6366f1);
   border-radius: 1px;
 }
 
-/* Styles pour l'indicateur de réorganisation */
-.reorder-indicator {
-  height: 2px;
-  background-color: var(--surface-primary, #6366f1);
-  margin: 1px 0;
-  border-radius: 1px;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
 
-.reorder-indicator.visible {
-  opacity: 1;
-}
 `;
 
 /**
