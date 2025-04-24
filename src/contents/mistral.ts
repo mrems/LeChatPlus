@@ -14,7 +14,7 @@ import {
   setupDragAndDrop
 } from '../modules/drag-drop';
 import { injectFoldersUI } from '~/modules/ui-renderer';
-import { injectPromptButton } from '~/modules/prompt-button';
+import { injectAndReplaceButtons } from '~/modules/prompt-button';
 import { setupErrorInterceptor } from '~/modules/error-interceptor';
 
 console.log("Le Chat+ : Initialisation de l'extension...");
@@ -144,8 +144,9 @@ async function main() {
   // Configurer le drag and drop pour les dossiers et conversations
   setupDragAndDropFeatures();
   
-  // Essayer d'injecter le bouton de prompt
-  injectPromptButton();
+  // Remplacer l'appel
+  // injectPromptButton();
+  injectAndReplaceButtons();
   
   console.log("Le Chat+ initialisé avec succès");
 }

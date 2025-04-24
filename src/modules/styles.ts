@@ -128,10 +128,10 @@ export const folderStyles = `
   content: '';
   position: absolute;
   top: -2px;
-  left: 10px;
+  left: 5px;
   right: 0;
-  height: 1px;
-  width: 20%;
+  height: 2px;
+  width:7%;
   background-color: var(--text-color-muted, #6366f1);
   border-radius: 1px;
 }
@@ -140,10 +140,10 @@ export const folderStyles = `
   content: '';
   position: absolute;
   bottom: -2px;
-  left: 10px;
+  left: 5px;
   right: 0;
-  height: 1px;
-  width: 20%;
+  height: 2px;
+  width: 7%;
   background-color: var(--text-color-muted, #6366f1);
   border-radius: 1px;
 }

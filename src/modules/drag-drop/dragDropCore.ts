@@ -4,8 +4,17 @@
  */
 
 import { safeSetStyle } from '../ui-helpers';
+import { getFolders } from '../folder-operations'; // Import nécessaire pour findFolderIdFromElement
 
 // Types communs pour le système de drag and drop
+
+// Interface pour la cible de dépôt potentielle
+export interface PotentialDropTarget {
+  element: HTMLElement | null;
+  type: 'conversation' | 'folderHeader' | 'rootArea' | null;
+  position: 'before' | 'after' | 'inside' | null;
+}
+
 export interface DragState {
   isDragging: boolean;
   elementType: 'mistral' | 'folder' | 'standalone' | null;
@@ -15,6 +24,7 @@ export interface DragState {
   dragIndicator: HTMLElement | null;
   startPosition: { x: number, y: number };
   currentPosition: { x: number, y: number };
+  potentialDropTarget: PotentialDropTarget; // Ajouté
 }
 
 // État global du drag
@@ -26,7 +36,12 @@ export const dragState: DragState = {
   sourceContainer: null,
   dragIndicator: null,
   startPosition: { x: 0, y: 0 },
-  currentPosition: { x: 0, y: 0 }
+  currentPosition: { x: 0, y: 0 },
+  potentialDropTarget: { // Initialisation
+    element: null,
+    type: null,
+    position: null
+  }
 };
 
 // Gestionnaires par type d'élément, à remplir par les modules spécifiques
@@ -75,6 +90,25 @@ export function injectDragAndDropStyles(): void {
       background-color: rgba(255, 85, 0, 0.08);
       border-radius: 4px;
       transition: background-color 0.2s ease;
+    }
+    
+    /* Indicateurs de position pour le drop entre éléments */
+    .drag-over-top::before,
+    .drag-over-bottom::after {
+        content: '';
+        position: absolute;
+        left: 5px;
+        right: 5px;
+        height: 2px;
+        background-color: #ff5500;
+        z-index: 10;
+        pointer-events: none;
+    }
+    .drag-over-top::before {
+        top: -1px;
+    }
+    .drag-over-bottom::after {
+        bottom: -1px;
     }
     
     /* Style spécifique pour le conteneur de dossiers */
@@ -190,10 +224,11 @@ export function createDragIndicator(evt: MouseEvent, sourceElement: HTMLElement)
 export function updateDragIndicatorPosition(evt: MouseEvent, indicator: HTMLElement | null = null): void {
   try {
     // S'assurer que l'indicateur existe avant de mettre à jour sa position
-    if (indicator && typeof indicator.style !== 'undefined') {
+    const targetIndicator = indicator || dragState.dragIndicator;
+    if (targetIndicator && typeof targetIndicator.style !== 'undefined') {
       // Déplacer l'élément avec un décalage par rapport au curseur
-      indicator.style.top = `${evt.clientY - 15}px`;
-      indicator.style.left = `${evt.clientX - 25}px`;
+      targetIndicator.style.top = `${evt.clientY - 15}px`;
+      targetIndicator.style.left = `${evt.clientX - 25}px`;
     }
   } catch (error) {
     // Ignorer les erreurs pour une expérience utilisateur fluide
@@ -209,6 +244,9 @@ export function initDragAndDrop(): void {
   injectDragAndDropStyles();
   
   console.log("[DragDrop] Système de drag and drop initialisé");
+  
+  // Nettoyer les potentiels états précédents au cas où
+  cleanupDrag();
 }
 
 /**
@@ -222,15 +260,20 @@ export function handleDragStart(e: MouseEvent, element: HTMLElement): void {
   if (shouldIgnoreDragEvent(e)) return;
   
   // Détection du type d'élément
+  let type: DragState['elementType'] = null;
   if (isMistralConversation(element)) {
     console.log("[DragDrop] Début du drag pour une conversation Mistral");
-    handlers.mistral.onDragStart(e, element);
+    type = 'mistral';
   } else if (isFolderConversation(element)) {
     console.log("[DragDrop] Début du drag pour une conversation dans un dossier");
-    handlers.folder.onDragStart(e, element);
+    type = 'folder';
   } else if (isStandaloneConversation(element)) {
     console.log("[DragDrop] Début du drag pour une conversation autonome");
-    handlers.standalone.onDragStart(e, element);
+    type = 'standalone';
+  }
+
+  if (type && handlers[type] && handlers[type].onDragStart) {
+    handlers[type].onDragStart(e, element);
   }
 }
 
@@ -238,17 +281,14 @@ export function handleDragStart(e: MouseEvent, element: HTMLElement): void {
  * Vérifie si un événement drag doit être ignoré
  */
 function shouldIgnoreDragEvent(e: MouseEvent): boolean {
+  // Ignorer les clics droits
+  if (e.button !== 0) return true;
+  
   const target = e.target as HTMLElement;
-  
-  // Ignorer les clics sur les boutons
-  if (target.tagName === 'BUTTON' || target.closest('button')) {
-    return true;
-  }
-  
-  // Ignorer les clics sur les éléments éditables
-  if (target.getAttribute('contenteditable') === 'true') {
-    return true;
-  }
+  // Ignorer si on clique sur un bouton ou un lien dans un bouton
+  if (target.tagName === 'BUTTON' || target.closest('button')) return true;
+  // Ignorer si on clique sur un élément éditable
+  if (target.getAttribute('contenteditable') === 'true' || target.closest('[contenteditable="true"]')) return true;
   
   return false;
 }
@@ -257,38 +297,156 @@ function shouldIgnoreDragEvent(e: MouseEvent): boolean {
  * Nettoie les ressources après un drag
  */
 export function cleanupDrag(): void {
-  try {
-    // Nettoyer toutes les classes liées au drag
+  // Nettoyer les écouteurs globaux (important)
+  // Les fonctions de fin de drag doivent aussi les retirer mais ceinture et bretelles
+  if (typeof window !== 'undefined') {
+      // Il faudra s'assurer que les références aux handlers sont disponibles ici
+      // ou passer les handlers à supprimer en argument, ou les stocker globalement.
+      // Pour l'instant, on suppose que les handle...End spécifiques les retirent.
+  }
+
+  // Nettoyer les classes CSS
+  if (dragState.element) {
+    dragState.element.classList.remove('dragging');
+    safeSetStyle(dragState.element, 'opacity', '1');
+  }
     document.querySelectorAll('.drag-over, .drag-over-top, .drag-over-bottom').forEach(el => {
       el.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
     });
     
-    // Supprimer l'indicateur de drag s'il existe
+  // Supprimer l'indicateur de drag
     if (dragState.dragIndicator && dragState.dragIndicator.parentNode) {
       dragState.dragIndicator.parentNode.removeChild(dragState.dragIndicator);
     }
     
-    // Restaurer le style de l'élément original s'il existe
-    if (dragState.element) {
-      dragState.element.classList.remove('dragging');
-      safeSetStyle(dragState.element, 'opacity', '1');
-    }
-    
-    // Réinitialiser l'état du document
+  // Réinitialiser l'état global
+  dragState.isDragging = false;
+  dragState.elementType = null;
+  dragState.element = null;
+  dragState.elementId = null;
+  dragState.sourceContainer = null;
+  dragState.dragIndicator = null;
+  dragState.startPosition = { x: 0, y: 0 };
+  dragState.currentPosition = { x: 0, y: 0 };
+  dragState.potentialDropTarget = { element: null, type: null, position: null };
+
+  // Rétablir la sélection de texte
+  if (typeof document !== 'undefined') {
     document.body.style.userSelect = '';
-    
-    // Réinitialiser l'état du drag
-    Object.assign(dragState, {
-      isDragging: false,
-      elementType: null,
-      element: null,
-      elementId: null,
-      sourceContainer: null,
-      dragIndicator: null,
-      startPosition: { x: 0, y: 0 },
-      currentPosition: { x: 0, y: 0 }
-    });
-  } catch (error) {
-    console.error("Erreur lors du nettoyage du drag and drop:", error);
   }
+}
+
+/**
+ * Met à jour la cible de dépôt potentielle et l'indicateur visuel.
+ */
+export function updateDropTarget(e: MouseEvent): void {
+  // Nettoyer les anciens indicateurs
+  document.querySelectorAll('.drag-over, .drag-over-top, .drag-over-bottom').forEach(el => {
+    el.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
+  });
+  dragState.potentialDropTarget = { element: null, type: null, position: null }; // Réinitialiser
+
+  const elementsUnderCursor = document.elementsFromPoint(e.clientX, e.clientY);
+  let potentialTarget: HTMLElement | null = null;
+  let targetType: PotentialDropTarget['type'] = null;
+  let targetPosition: PotentialDropTarget['position'] = null;
+
+  // Priorité 1: Conversation cible (.le-chat-plus-conversation-item, pas l'élément glissé lui-même)
+  potentialTarget = elementsUnderCursor.find(el => 
+      el.classList && 
+      el.classList.contains('le-chat-plus-conversation-item') && 
+      el !== dragState.element
+  ) as HTMLElement | null;
+  if (potentialTarget) {
+      targetType = 'conversation';
+      const rect = potentialTarget.getBoundingClientRect();
+      const midPoint = rect.top + rect.height / 2;
+      if (e.clientY < midPoint) {
+          targetPosition = 'before';
+          potentialTarget.classList.add('drag-over-top');
+      } else {
+          targetPosition = 'after';
+          potentialTarget.classList.add('drag-over-bottom');
+      }
+      potentialTarget.classList.add('drag-over');
+  }
+
+  // Priorité 2: En-tête de dossier (.le-chat-plus-folder-header)
+  if (!potentialTarget) {
+      potentialTarget = elementsUnderCursor.find(el => 
+          el.classList && el.classList.contains('le-chat-plus-folder-header')
+      ) as HTMLElement | null;
+      if (potentialTarget) {
+          targetType = 'folderHeader';
+          targetPosition = 'inside';
+          potentialTarget.classList.add('drag-over');
+          // On peut aussi appliquer drag-over au folder-item parent pour un meilleur visuel
+          potentialTarget.closest('.le-chat-plus-folder-item')?.classList.add('drag-over');
+      }
+  }
+
+  // Priorité 3: Zone racine générale (par exemple, #le-chat-plus-folders-list)
+  if (!potentialTarget) {
+      potentialTarget = elementsUnderCursor.find(el => 
+        el.id === 'le-chat-plus-folders-list' || 
+        (el.closest && el.closest('#le-chat-plus-folders-list')) // Cibler aussi si on est sur un enfant direct
+        // Ajouter d'autres sélecteurs si nécessaire pour la zone racine
+      ) as HTMLElement | null;
+      if (potentialTarget) {
+          // S'assurer qu'on cible bien la liste elle-même
+          potentialTarget = document.getElementById('le-chat-plus-folders-list'); 
+          if (potentialTarget) {
+            targetType = 'rootArea';
+            targetPosition = 'inside';
+            potentialTarget.classList.add('drag-over');
+          }
+      }
+  }
+
+  // Mettre à jour l'état global
+  dragState.potentialDropTarget = { 
+      element: potentialTarget, 
+      type: targetType, 
+      position: targetPosition 
+  };
+  
+  // Optionnel: ajuster le style de l'indicateur de drag
+  if (dragState.dragIndicator) {
+      if (targetType) {
+          dragState.dragIndicator.style.borderColor = 'rgba(255, 85, 0, 0.6)'; // Couleur orange pour indiquer une cible valide
+      } else {
+          dragState.dragIndicator.style.borderColor = 'rgba(221, 221, 221, 0.5)'; // Couleur par défaut
+      }
+  }
+}
+
+/**
+ * Centralise la fonction pour trouver l'ID d'un dossier depuis son élément DOM.
+ */
+export async function findFolderIdFromElement(folderElement: Element | null): Promise<string | null> {
+    if (!folderElement) return null;
+    
+    const directId = folderElement.getAttribute('data-folder-id');
+    if (directId) return directId;
+
+    // Si l'ID n'est pas direct, essayer une méthode basée sur l'index DOM relatif aux données stockées
+    // C'est moins robuste mais nécessaire si data-folder-id n'est pas sur l'élément folder-item
+    try {
+        const folders = await getFolders(); // Récupère les dossiers ordonnés du stockage
+        const folderItemsInDOM = document.querySelectorAll('.le-chat-plus-folder-item'); // Récupère les éléments dossier dans le DOM
+        
+        // Trouver l'index de notre élément dans la liste du DOM
+        const folderIndex = Array.from(folderItemsInDOM).indexOf(folderElement);
+        
+        // Si l'élément est trouvé dans le DOM et que son index correspond à un dossier dans les données
+        if (folderIndex >= 0 && folderIndex < folders.length) {
+            console.log(`findFolderIdFromElement: ID trouvé par index DOM (${folderIndex}) -> ${folders[folderIndex].id}`);
+            return folders[folderIndex].id; // Retourne l'ID du dossier correspondant depuis les données stockées
+        }
+  } catch (error) {
+        console.error("Erreur dans findFolderIdFromElement lors de l'utilisation de l'index DOM:", error);
+  }
+    
+    console.warn("findFolderIdFromElement: Impossible de trouver l'ID pour l'élément:", folderElement);
+    return null; // Retourner null si aucun ID n'est trouvé
 } 
