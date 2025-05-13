@@ -27,6 +27,19 @@ export function showModal(options: ModalOptions): Promise<string | boolean | nul
     // Créer les éléments du modal
     const modal = document.createElement('div');
     modal.className = 'le-chat-plus-modal';
+    // Style pour l'overlay du modal (pour le centrage et le clic extérieur)
+    Object.assign(modal.style, {
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      width: '100%',
+      height: '100%',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)', // Fond semi-transparent
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: '10003' // Z-index plus élevé pour être au-dessus de la modale des dossiers
+    });
     
     const modalContent = document.createElement('div');
     modalContent.className = 'le-chat-plus-modal-content';

@@ -123,304 +123,487 @@ export async function updateActiveConversationHighlight(): Promise<void> {
 
 /**
  * Affiche tous les dossiers et leur contenu
+ * @param parentElement Élément optionnel dans lequel rendre la liste des dossiers.
+ *                      Si non fourni, utilise document.getElementById('le-chat-plus-folders-list').
  */
-export async function renderFolders(): Promise<void> {
+export async function renderFolders(parentElement?: HTMLElement): Promise<void> {
   if (isRenderingFolders) {
     console.warn("RenderFolders: Appel ignoré car un rendu est déjà en cours.");
     return;
   }
   isRenderingFolders = true;
-  console.log("RenderFolders START"); // <-- Log de début
+  console.log("RenderFolders START");
   
-  try { // Ajouter un bloc try...finally pour garantir la libération du verrou
-  const foldersList = document.getElementById('le-chat-plus-folders-list');
-  if (!foldersList) {
-    console.log("Liste des dossiers non trouvée, tentative de réinjection...");
-    // Si la liste des dossiers n'existe pas, essayer de réinjecter l'interface complète
-    if (!document.getElementById('le-chat-plus-folders')) {
-      injectFoldersUI();
-    }
-      console.log("RenderFolders END (liste non trouvée)"); // <-- Log de fin précoce
-      // Pas besoin de return ici, le finally s'exécutera
-    } else {
-        // Vider la liste de manière plus robuste
-        while (foldersList.firstChild) {
-          foldersList.removeChild(foldersList.firstChild);
-        }
-  
-  const folders = await getFolders();
-  
-  // S'assurer que tous les dossiers sont fermés au chargement initial de la page
-  // Utiliser une variable statique pour suivre si c'est le premier rendu depuis le chargement de la page
-  if (!('initialRenderDone' in renderFolders)) {
-    // Première exécution après le chargement de la page, fermer tous les dossiers
-    const foldersWithUpdatedState = folders.map(folder => ({
-      ...folder,
-      expanded: false
-    }));
-    
-    // Sauvegarder l'état fermé
-    await setValue('folders', foldersWithUpdatedState);
-    
-    // Mettre à jour les folders locaux pour le rendu actuel
-    folders.forEach(folder => {
-      folder.expanded = false;
-    });
-    
-    // Marquer comme fait pour ne pas répéter à chaque appel de renderFolders
-    (renderFolders as any).initialRenderDone = true;
-  }
+  try {
+    const targetListContainer = parentElement || document.getElementById('le-chat-plus-folders-list');
 
-  // Cas où il n'y a aucun dossier ni conversation à afficher
-  if (folders.length === 0) {
-    const { getStandaloneConversations } = await import('./conversation-operations');
-    const standaloneConversations = await getStandaloneConversations();
-    
-    if (standaloneConversations.length === 0) {
-      const emptyMessage = document.createElement('div');
-      emptyMessage.textContent = 'Aucun dossier ou conversation.';
-      safeSetStyle(emptyMessage, 'padding', '8px');
-      safeSetStyle(emptyMessage, 'color', '#888');
-      safeSetStyle(emptyMessage, 'fontStyle', 'italic');
-      safeSetStyle(emptyMessage, 'fontSize', '12px');
-      
-      if (foldersList) {
-        foldersList.appendChild(emptyMessage);
-      }
+    if (!targetListContainer) {
+      console.error("RenderFolders: Conteneur de la liste des dossiers non trouvé.");
+      isRenderingFolders = false;
       return;
     }
-  }
+
+    // Vider le conteneur cible de manière robuste
+    while (targetListContainer.firstChild) {
+      targetListContainer.removeChild(targetListContainer.firstChild);
+    }
   
-  // Afficher d'abord les dossiers normaux
-  for (const folder of folders) {
-    const folderItem = document.createElement('div');
-    folderItem.className = 'le-chat-plus-folder-item';
-    folderItem.setAttribute('data-folder-id', folder.id);
-    safeSetStyle(folderItem, 'marginBottom', '2px');
-    
-    // En-tête du dossier
-    const folderHeader = document.createElement('div');
-    folderHeader.className = 'le-chat-plus-folder-header';
-    safeSetStyle(folderHeader, 'display', 'flex');
-    safeSetStyle(folderHeader, 'alignItems', 'center');
-    safeSetStyle(folderHeader, 'paddingLeft', '15px');
-    safeSetStyle(folderHeader, 'cursor', 'pointer');
-    safeSetStyle(folderHeader, 'borderRadius', '4px');
-    safeSetStyle(folderHeader, 'transition', 'background-color 0.2s');
-    
-    // Effet de hover sur l'en-tête du dossier
-    folderHeader.addEventListener('mouseenter', () => {
-      safeSetStyle(folderHeader, 'backgroundColor', 'rgba(0, 0, 0, 0.05)');
-    });
-    
-    folderHeader.addEventListener('mouseleave', () => {
-      safeSetStyle(folderHeader, 'backgroundColor', 'transparent');
-    });
-    
-    // Icône pour plier/déplier
-    const expandIcon = document.createElement('span');
-    expandIcon.textContent = folder.expanded ? '▼' : '►';
-    safeSetStyle(expandIcon, 'marginRight', '5px');
-    safeSetStyle(expandIcon, 'fontSize', '6px');
-    safeSetStyle(expandIcon, 'color', 'var(--text-color-subtle)');
-    safeSetStyle(expandIcon, 'transition', 'transform 0.2s');
-    
-    // Nom du dossier
-    const folderName = document.createElement('span');
-    folderName.textContent = folder.name;
-    folderName.className = 'folder-name';
-    safeSetStyle(folderName, 'flex', '1');
-    safeSetStyle(folderName, 'fontWeight', 'normal');
-    safeSetStyle(folderName, 'fontSize', '13px');
-    safeSetStyle(folderName, 'color', 'var(--text-color-subtle)');
-    safeSetStyle(folderName, 'cursor', 'inherit');
-    safeSetStyle(folderName, 'padding', '2px');
-    safeSetStyle(folderName, 'borderRadius', '3px');
-    safeSetStyle(folderName, 'transition', 'background-color 0.2s');
-    
-    // Ajouter un gestionnaire d'événements de double-clic pour l'édition du nom du dossier
-    folderName.addEventListener('dblclick', async (e) => {
-      e.stopPropagation(); // Empêcher la propagation vers les handlers parent
-      
-      // Rendre l'élément éditable
-      folderName.setAttribute('contenteditable', 'true');
-      folderName.focus();
-      
-      // Sélectionner tout le texte
-      const selection = window.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(folderName);
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-      
-      // Ajouter un style pour indiquer l'édition
-      safeSetStyle(folderName, 'cursor', 'text');
-      
-      // Gestionnaire pour terminer l'édition
-      const finishEditingName = async () => {
-        folderName.removeAttribute('contenteditable');
-        safeSetStyle(folderName, 'background-color', 'transparent');
-        safeSetStyle(folderName, 'cursor', 'inherit');
+    const folders = await getFolders();
+  
+    // S'assurer que tous les dossiers sont fermés au chargement initial de la page
+    if (!('initialRenderDone' in renderFolders)) {
+      const foldersWithUpdatedState = folders.map(folder => ({ ...folder, expanded: false }));
+      await setValue('folders', foldersWithUpdatedState);
+      folders.forEach(folder => { folder.expanded = false; });
+      (renderFolders as any).initialRenderDone = true;
+    }
+
+    if (folders.length === 0) {
+      const { getStandaloneConversations } = await import('./conversation-operations');
+      const standaloneConversations = await getStandaloneConversations();
+      if (standaloneConversations.length === 0) {
+        const emptyMessage = document.createElement('div');
+        emptyMessage.textContent = 'Aucun dossier ou conversation.';
+        safeSetStyle(emptyMessage, 'padding', '8px');
+        safeSetStyle(emptyMessage, 'color', '#888');
+        safeSetStyle(emptyMessage, 'fontStyle', 'italic');
+        safeSetStyle(emptyMessage, 'fontSize', '12px');
         
-        // Récupérer le nouveau nom
-        const newName = folderName.textContent?.trim() || folder.name;
-        
-        // Si le nom a changé
-        if (newName !== folder.name && newName) {
-          // Mettre à jour le dossier
-          const folders = await getFolders();
-          const updatedFolders = folders.map(f => 
-            f.id === folder.id ? { ...f, name: newName } : f
-          );
-          
-          // Sauvegarder la modification
-          await setValue('folders', updatedFolders);
-          
-          // Rafraîchir l'affichage
-          await renderFolders();
+        if (targetListContainer) {
+          targetListContainer.appendChild(emptyMessage);
         }
-      };
+        return;
+      }
+    }
+    
+    for (const folder of folders) {
+      const folderItem = document.createElement('div');
+      folderItem.className = 'le-chat-plus-folder-item';
+      folderItem.setAttribute('data-folder-id', folder.id);
+      safeSetStyle(folderItem, 'marginBottom', '2px');
       
-      // Gestionnaires d'événements pour terminer l'édition
-      folderName.addEventListener('blur', finishEditingName, { once: true });
-      folderName.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          finishEditingName();
-        } else if (e.key === 'Escape') {
-          folderName.textContent = folder.name; // Annuler les modifications
-          folderName.blur();
-        }
+      // En-tête du dossier
+      const folderHeader = document.createElement('div');
+      folderHeader.className = 'le-chat-plus-folder-header';
+      safeSetStyle(folderHeader, 'display', 'flex');
+      safeSetStyle(folderHeader, 'alignItems', 'center');
+      safeSetStyle(folderHeader, 'paddingLeft', '15px');
+      safeSetStyle(folderHeader, 'cursor', 'pointer');
+      safeSetStyle(folderHeader, 'borderRadius', '4px');
+      safeSetStyle(folderHeader, 'transition', 'background-color 0.2s');
+      
+      // Effet de hover sur l'en-tête du dossier
+      folderHeader.addEventListener('mouseenter', () => {
+        safeSetStyle(folderHeader, 'backgroundColor', 'rgba(0, 0, 0, 0.05)');
       });
-    });
-    
-    // Conteneur pour les actions du dossier
-    const actionsContainer = document.createElement('div');
-    safeSetStyle(actionsContainer, 'display', 'flex');
-    safeSetStyle(actionsContainer, 'alignItems', 'center');
-    safeSetStyle(actionsContainer, 'opacity', '0');
-    safeSetStyle(actionsContainer, 'transition', 'opacity 0.2s');
-    
-    // Afficher les actions au survol
-    folderHeader.addEventListener('mouseenter', () => {
-      safeSetStyle(actionsContainer, 'opacity', '1');
-    });
-    
-    folderHeader.addEventListener('mouseleave', () => {
-      safeSetStyle(actionsContainer, 'opacity', '0');
-    });
-    
-    // Bouton de suppression
-    const deleteButton = document.createElement('button');
-    deleteButton.textContent = '×';
-    safeSetStyle(deleteButton, 'background', 'none');
-    safeSetStyle(deleteButton, 'border', 'none');
-    safeSetStyle(deleteButton, 'color', 'var(--text-color-subtle)');
-    safeSetStyle(deleteButton, 'fontWeight', 'bold');
-    safeSetStyle(deleteButton, 'cursor', 'pointer');
-    safeSetStyle(deleteButton, 'padding', '2px 5px');
-    safeSetStyle(deleteButton, 'fontSize', '14px');
-    safeSetStyle(deleteButton, 'opacity', '0.7');
-    safeSetStyle(deleteButton, 'transition', 'opacity 0.2s');
-    deleteButton.title = 'Supprimer ce dossier';
-    
-    // Ajouter un gestionnaire d'événements pour le bouton de suppression
-    deleteButton.addEventListener('click', async (e) => {
-      e.stopPropagation(); // Empêcher la propagation
       
-      // Afficher le modal de confirmation
-      const isConfirmed = await showDeleteConfirmModal(folder.name, 'dossier');
+      folderHeader.addEventListener('mouseleave', () => {
+        safeSetStyle(folderHeader, 'backgroundColor', 'transparent');
+      });
       
-      // Si la suppression est confirmée
-      if (isConfirmed) {
-        // Supprimer le dossier
-        await deleteFolder(folder.id);
+      // Icône pour plier/déplier
+      const expandIcon = document.createElement('span');
+      expandIcon.textContent = folder.expanded ? '▼' : '►';
+      safeSetStyle(expandIcon, 'marginRight', '5px');
+      safeSetStyle(expandIcon, 'fontSize', '6px');
+      safeSetStyle(expandIcon, 'color', 'var(--text-color-subtle)');
+      safeSetStyle(expandIcon, 'transition', 'transform 0.2s');
+      
+      // Nom du dossier
+      const folderName = document.createElement('span');
+      folderName.textContent = folder.name;
+      folderName.className = 'folder-name';
+      safeSetStyle(folderName, 'flex', '1');
+      safeSetStyle(folderName, 'fontWeight', 'normal');
+      safeSetStyle(folderName, 'fontSize', '13px');
+      safeSetStyle(folderName, 'color', 'var(--text-color-subtle)');
+      safeSetStyle(folderName, 'cursor', 'inherit');
+      safeSetStyle(folderName, 'padding', '2px');
+      safeSetStyle(folderName, 'borderRadius', '3px');
+      safeSetStyle(folderName, 'transition', 'background-color 0.2s');
+      
+      // Ajouter un gestionnaire d'événements de double-clic pour l'édition du nom du dossier
+      folderName.addEventListener('dblclick', async (e) => {
+        e.stopPropagation(); // Empêcher la propagation vers les handlers parent
         
-        // Rafraîchir l'affichage
-        await renderFolders();
-      }
-    });
-    
-    // Ajouter les boutons au conteneur d'actions
-    actionsContainer.appendChild(deleteButton);
-    
-    folderHeader.appendChild(expandIcon);
-    folderHeader.appendChild(folderName);
-    folderHeader.appendChild(actionsContainer);
-    folderItem.appendChild(folderHeader);
-    
-    // Conteneur pour les conversations
-    const conversationsContainer = document.createElement('div');
-    conversationsContainer.className = 'le-chat-plus-folder-conversations';
-    safeSetStyle(conversationsContainer, 'paddingLeft', '15px');
-    safeSetStyle(conversationsContainer, 'marginLeft', '5px');
-    safeSetStyle(conversationsContainer, 'display', folder.expanded ? 'block' : 'none');
-    
-    // Ajouter le gestionnaire d'événements pour plier/déplier le dossier
-    folderHeader.addEventListener('click', async (e) => {
-      // Éviter de déclencher si on a cliqué sur un bouton d'action
-      if (e.target && 
-          ((e.target as HTMLElement).closest('button') || 
-           (e.target as HTMLElement).tagName === 'BUTTON')) {
-        return;
-      }
-      
-      // Ne pas traiter le clic si nous sommes en train d'éditer le nom
-      const folderNameElement = folderHeader.querySelector('.folder-name');
-      if (folderNameElement && folderNameElement.getAttribute('contenteditable') === 'true') {
-        return;
-      }
-      
-      // Variable pour détecter un double-clic
-      if ((folderHeader as any)._clickTimer) {
-        // Double-clic détecté, ne pas traiter comme un clic simple
-        clearTimeout((folderHeader as any)._clickTimer);
-        (folderHeader as any)._clickTimer = null;
-        return;
-      }
-      
-      // Configurer un délai pour différencier le clic simple du double-clic
-      (folderHeader as any)._clickTimer = setTimeout(() => {
-        (folderHeader as any)._clickTimer = null;
+        // Rendre l'élément éditable
+        folderName.setAttribute('contenteditable', 'true');
+        folderName.focus();
         
-        // Exécuter l'action de clic simple après le délai
-        // Inverser l'état d'expansion
-        folder.expanded = !folder.expanded;
+        // Sélectionner tout le texte
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(folderName);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
         
-        // Mettre à jour l'apparence visuelle
-        expandIcon.textContent = folder.expanded ? '▼' : '►';
-        conversationsContainer.style.display = folder.expanded ? 'block' : 'none';
+        // Ajouter un style pour indiquer l'édition
+        safeSetStyle(folderName, 'cursor', 'text');
         
-        // Enregistrer l'état des dossiers
-        const updateFolders = async () => {
-          const folders = await getFolders();
-          const updatedFolders = folders.map(f => 
-            f.id === folder.id ? { ...f, expanded: folder.expanded } : f
-          );
+        // Gestionnaire pour terminer l'édition
+        const finishEditingName = async () => {
+          folderName.removeAttribute('contenteditable');
+          safeSetStyle(folderName, 'background-color', 'transparent');
+          safeSetStyle(folderName, 'cursor', 'inherit');
           
-          await setValue('folders', updatedFolders);
+          // Récupérer le nouveau nom
+          const newName = folderName.textContent?.trim() || folder.name;
+          
+          // Si le nom a changé
+          if (newName !== folder.name && newName) {
+            // Mettre à jour le dossier
+            const folders = await getFolders();
+            const updatedFolders = folders.map(f => 
+              f.id === folder.id ? { ...f, name: newName } : f
+            );
+            
+            // Sauvegarder la modification
+            await setValue('folders', updatedFolders);
+            
+            // Rafraîchir l'affichage
+            await renderFolders(targetListContainer);
+          }
         };
         
-        updateFolders();
-      }, 250); // Délai de 250ms pour détecter un clic simple
+        // Gestionnaires d'événements pour terminer l'édition
+        folderName.addEventListener('blur', finishEditingName, { once: true });
+        folderName.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            finishEditingName();
+          } else if (e.key === 'Escape') {
+            folderName.textContent = folder.name; // Annuler les modifications
+            folderName.blur();
+          }
+        });
+      });
       
-      // Empêcher la propagation pour éviter des conflits avec d'autres gestionnaires
-      e.stopPropagation();
-    });
+      // Conteneur pour les actions du dossier
+      const actionsContainer = document.createElement('div');
+      safeSetStyle(actionsContainer, 'display', 'flex');
+      safeSetStyle(actionsContainer, 'alignItems', 'center');
+      safeSetStyle(actionsContainer, 'opacity', '0');
+      safeSetStyle(actionsContainer, 'transition', 'opacity 0.2s');
+      
+      // Afficher les actions au survol
+      folderHeader.addEventListener('mouseenter', () => {
+        safeSetStyle(actionsContainer, 'opacity', '1');
+      });
+      
+      folderHeader.addEventListener('mouseleave', () => {
+        safeSetStyle(actionsContainer, 'opacity', '0');
+      });
+      
+      // Bouton de suppression
+      const deleteButton = document.createElement('button');
+      deleteButton.textContent = '×';
+      safeSetStyle(deleteButton, 'background', 'none');
+      safeSetStyle(deleteButton, 'border', 'none');
+      safeSetStyle(deleteButton, 'color', 'var(--text-color-subtle)');
+      safeSetStyle(deleteButton, 'fontWeight', 'bold');
+      safeSetStyle(deleteButton, 'cursor', 'pointer');
+      safeSetStyle(deleteButton, 'padding', '2px 5px');
+      safeSetStyle(deleteButton, 'fontSize', '14px');
+      safeSetStyle(deleteButton, 'opacity', '0.7');
+      safeSetStyle(deleteButton, 'transition', 'opacity 0.2s');
+      deleteButton.title = 'Supprimer ce dossier';
+      
+      // Ajouter un gestionnaire d'événements pour le bouton de suppression
+      deleteButton.addEventListener('click', async (e) => {
+        e.stopPropagation(); // Empêcher la propagation
+        
+        // Afficher le modal de confirmation
+        const isConfirmed = await showDeleteConfirmModal(folder.name, 'dossier');
+        
+        // Si la suppression est confirmée
+        if (isConfirmed) {
+          // Supprimer le dossier
+          await deleteFolder(folder.id);
+          
+          // Rafraîchir l'affichage
+          await renderFolders(targetListContainer);
+        }
+      });
+      
+      // Ajouter les boutons au conteneur d'actions
+      actionsContainer.appendChild(deleteButton);
+      
+      folderHeader.appendChild(expandIcon);
+      folderHeader.appendChild(folderName);
+      folderHeader.appendChild(actionsContainer);
+      folderItem.appendChild(folderHeader);
+      
+      // Conteneur pour les conversations
+      const conversationsContainer = document.createElement('div');
+      conversationsContainer.className = 'le-chat-plus-folder-conversations';
+      safeSetStyle(conversationsContainer, 'paddingLeft', '15px');
+      safeSetStyle(conversationsContainer, 'marginLeft', '5px');
+      safeSetStyle(conversationsContainer, 'display', folder.expanded ? 'block' : 'none');
+      
+      // Ajouter le gestionnaire d'événements pour plier/déplier le dossier
+      folderHeader.addEventListener('click', async (e) => {
+        // Éviter de déclencher si on a cliqué sur un bouton d'action
+        if (e.target && 
+            ((e.target as HTMLElement).closest('button') || 
+             (e.target as HTMLElement).tagName === 'BUTTON')) {
+          return;
+        }
+        
+        // Ne pas traiter le clic si nous sommes en train d'éditer le nom
+        const folderNameElement = folderHeader.querySelector('.folder-name');
+        if (folderNameElement && folderNameElement.getAttribute('contenteditable') === 'true') {
+          return;
+        }
+        
+        // Variable pour détecter un double-clic
+        if ((folderHeader as any)._clickTimer) {
+          // Double-clic détecté, ne pas traiter comme un clic simple
+          clearTimeout((folderHeader as any)._clickTimer);
+          (folderHeader as any)._clickTimer = null;
+          return;
+        }
+        
+        // Configurer un délai pour différencier le clic simple du double-clic
+        (folderHeader as any)._clickTimer = setTimeout(() => {
+          (folderHeader as any)._clickTimer = null;
+          
+          // Exécuter l'action de clic simple après le délai
+          // Inverser l'état d'expansion
+          folder.expanded = !folder.expanded;
+          
+          // Mettre à jour l'apparence visuelle
+          expandIcon.textContent = folder.expanded ? '▼' : '►';
+          conversationsContainer.style.display = folder.expanded ? 'block' : 'none';
+          
+          // Enregistrer l'état des dossiers
+          const updateFolders = async () => {
+            const folders = await getFolders();
+            const updatedFolders = folders.map(f => 
+              f.id === folder.id ? { ...f, expanded: folder.expanded } : f
+            );
+            
+            await setValue('folders', updatedFolders);
+          };
+          
+          updateFolders();
+        }, 250); // Délai de 250ms pour détecter un clic simple
+        
+        // Empêcher la propagation pour éviter des conflits avec d'autres gestionnaires
+        e.stopPropagation();
+      });
+      
+      // Charger et afficher les conversations du dossier
+      const conversations = await getConversationsInFolder(folder.id);
+      
+      // Obtenir l'ID de la conversation active
+      const activeConversationId = getCurrentConversationId();
+      
+      if (conversations.length > 0) {
+        for (const conv of conversations) {
+          const convItem = document.createElement('div');
+          convItem.className = 'le-chat-plus-conversation-item';
+          convItem.setAttribute('data-conversation-id', conv.id);
+          safeSetStyle(convItem, 'marginBottom', '0'); // Réduit l'espacement vertical
+          safeSetStyle(convItem, 'lineHeight', '1.2'); // Réduit l'espacement vertical
+          
+          // Vérifier si cette conversation est active
+          const isActive = conv.id === activeConversationId;
+          
+          // Titre de la conversation avec lien
+          const convLink = document.createElement('a');
+          convLink.textContent = conv.title || 'Conversation sans titre';
+          convLink.href = conv.url;
+          safeSetStyle(convLink, 'flex', '1');
+          safeSetStyle(convLink, 'textDecoration', 'none');
+          safeSetStyle(convLink, 'cursor', 'pointer');
+          safeSetStyle(convLink, 'fontSize', '11px');
+          safeSetStyle(convLink, 'marginLeft', '10px');
+          safeSetStyle(convLink, 'marginRight', '10px');
+          
+          // Appliquer la couleur en fonction de si la conversation est active ou non
+          if (isActive) {
+            safeSetStyle(convLink, 'color', 'var(--text-color-subtle)');
+            safeSetStyle(convLink, 'fontWeight', 'bold');
+            convItem.classList.add('active-conversation');
+          } else {
+            safeSetStyle(convLink, 'color', 'var(--text-color-muted)');
+          }
+          
+          safeSetStyle(convLink, 'whiteSpace', 'nowrap');
+          safeSetStyle(convLink, 'overflow', 'hidden');
+          safeSetStyle(convLink, 'textOverflow', 'ellipsis');
+          
+          // Ajouter un gestionnaire d'événements de double-clic pour l'édition du titre de la conversation
+          convLink.addEventListener('dblclick', (e) => {
+            e.stopPropagation(); // Empêcher la propagation
+            e.preventDefault(); // Empêcher la navigation
+            
+            // Rendre l'élément éditable
+            convLink.setAttribute('contenteditable', 'true');
+            convLink.focus();
+            
+            // Sélectionner tout le texte
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(convLink);
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+            
+            // Ajouter un style pour indiquer l'édition
+            safeSetStyle(convLink, 'cursor', 'text');
+            
+            // Désactiver temporairement le comportement du lien
+            const originalClickHandler = convLink.onclick;
+            convLink.onclick = (e) => {
+              e.preventDefault();
+              return false;
+            };
+            
+            // Gestionnaire pour terminer l'édition
+            const finishEditingConv = async () => {
+              convLink.removeAttribute('contenteditable');
+              safeSetStyle(convLink, 'background-color', 'transparent');
+              safeSetStyle(convLink, 'cursor', 'pointer');
+              
+              // Réactiver le comportement du lien
+              convLink.onclick = originalClickHandler;
+              
+              // Récupérer le nouveau titre
+              const newTitle = convLink.textContent?.trim() || conv.title || 'Conversation sans titre';
+              
+              // Si le titre a changé
+              if (newTitle !== conv.title && newTitle) {
+                // Importer et utiliser la fonction de renommage de conversation
+                const { renameConversation } = await import('./conversation-operations');
+                await renameConversation(conv.id, newTitle);
+                
+                // Rafraîchir l'affichage
+                await renderFolders(targetListContainer);
+              }
+            };
+            
+            // Gestionnaires d'événements pour terminer l'édition
+            convLink.addEventListener('blur', finishEditingConv, { once: true });
+            convLink.addEventListener('keydown', (e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                finishEditingConv();
+              } else if (e.key === 'Escape') {
+                convLink.textContent = conv.title || 'Conversation sans titre'; // Annuler les modifications
+                convLink.blur();
+              }
+            });
+          });
+          
+          // Empêcher le comportement par défaut du lien et gérer la navigation
+          convLink.addEventListener('click', (e) => {
+            // Ne pas traiter le clic si nous sommes en train d'éditer le titre
+            if (convLink.getAttribute('contenteditable') === 'true') {
+              e.preventDefault();
+              return;
+            }
+            
+            // Variable pour détecter un double-clic
+            if ((convLink as any)._clickTimer) {
+              // Double-clic détecté, ne pas traiter comme un clic simple
+              clearTimeout((convLink as any)._clickTimer);
+              (convLink as any)._clickTimer = null;
+              e.preventDefault();
+              return;
+            }
+            
+            // Configurer un délai pour différencier le clic simple du double-clic
+            (convLink as any)._clickTimer = setTimeout(() => {
+              (convLink as any)._clickTimer = null;
+              
+              // Exécuter l'action de clic simple après le délai
+              handleConvLinkClick(e, conv, convLink as HTMLElement);
+            }, 250); // Délai de 250ms pour détecter un clic simple
+            
+            e.preventDefault();
+          });
+          
+          // Conteneur pour les boutons d'action
+          const actionButtons = document.createElement('div');
+          safeSetStyle(actionButtons, 'display', 'flex');
+          safeSetStyle(actionButtons, 'opacity', '0');
+          safeSetStyle(actionButtons, 'transition', 'opacity 0.2s');
+          safeSetStyle(actionButtons, 'height', '16px'); // Réduire la hauteur des boutons d'action
+          
+          // Bouton pour supprimer
+          const removeButton = document.createElement('button');
+          removeButton.textContent = '×';
+          safeSetStyle(removeButton, 'background', 'none');
+          safeSetStyle(removeButton, 'border', 'none');
+          safeSetStyle(removeButton, 'color', '#999');
+          safeSetStyle(removeButton, 'cursor', 'pointer');
+          safeSetStyle(removeButton, 'padding', '0');
+          safeSetStyle(removeButton, 'fontSize', '12px');
+          safeSetStyle(removeButton, 'lineHeight', '1');
+          removeButton.title = 'Retirer du dossier';
+          
+          // Ajouter un gestionnaire d'événements pour le bouton de suppression
+          removeButton.addEventListener('click', async (e) => {
+            e.stopPropagation(); // Empêcher la propagation
+            
+            // Afficher le modal de confirmation
+            const isConfirmed = await showDeleteConfirmModal(conv.title || 'Conversation sans titre', 'conversation');
+            
+            // Si la suppression est confirmée
+            if (isConfirmed) {
+              // Supprimer la conversation du dossier
+              await removeConversationFromFolder(folder.id, conv.id);
+              
+              // Rafraîchir l'affichage
+              await renderFolders(targetListContainer);
+            }
+          });
+          
+          // Ajouter les boutons
+          actionButtons.appendChild(removeButton);
+          
+          convItem.appendChild(convLink);
+          convItem.appendChild(actionButtons);
+          conversationsContainer.appendChild(convItem);
+          
+          // Afficher les boutons d'action au survol
+          convItem.addEventListener('mouseenter', () => {
+            safeSetStyle(actionButtons, 'opacity', '1');
+          });
+          
+          convItem.addEventListener('mouseleave', () => {
+            safeSetStyle(actionButtons, 'opacity', '0');
+          });
+        }
+      } else {
+        // Message si le dossier est vide
+        const emptyFolder = document.createElement('div');
+        emptyFolder.textContent = 'Dossier vide';
+        safeSetStyle(emptyFolder, 'padding', '4px 0');
+        safeSetStyle(emptyFolder, 'color', '#888');
+        safeSetStyle(emptyFolder, 'fontStyle', 'italic');
+        safeSetStyle(emptyFolder, 'fontSize', '12px');
+        conversationsContainer.appendChild(emptyFolder);
+      }
+      
+      folderItem.appendChild(conversationsContainer);
+      targetListContainer.appendChild(folderItem);
+    }
     
-    // Charger et afficher les conversations du dossier
-    const conversations = await getConversationsInFolder(folder.id);
+    // Ensuite afficher les conversations autonomes (hors dossier)
+    const { getStandaloneConversations, removeStandaloneConversation } = await import('./conversation-operations');
+    const standaloneConversations = await getStandaloneConversations();
     
-    // Obtenir l'ID de la conversation active
-    const activeConversationId = getCurrentConversationId();
-    
-    if (conversations.length > 0) {
-      for (const conv of conversations) {
+    if (standaloneConversations.length > 0) {
+      // Obtenir l'ID de la conversation active
+      const activeConversationId = getCurrentConversationId();
+      
+      for (const conv of standaloneConversations) {
         const convItem = document.createElement('div');
         convItem.className = 'le-chat-plus-conversation-item';
         convItem.setAttribute('data-conversation-id', conv.id);
         safeSetStyle(convItem, 'marginBottom', '0'); // Réduit l'espacement vertical
-        safeSetStyle(convItem, 'lineHeight', '1.2'); // Réduit l'espacement vertical
+        safeSetStyle(convItem, 'lineHeight', '1.8'); // Réduit l'espacement vertical
         
         // Vérifier si cette conversation est active
         const isActive = conv.id === activeConversationId;
@@ -494,7 +677,7 @@ export async function renderFolders(): Promise<void> {
               await renameConversation(conv.id, newTitle);
               
               // Rafraîchir l'affichage
-              await renderFolders();
+              await renderFolders(targetListContainer);
             }
           };
           
@@ -556,22 +739,27 @@ export async function renderFolders(): Promise<void> {
         safeSetStyle(removeButton, 'padding', '0');
         safeSetStyle(removeButton, 'fontSize', '12px');
         safeSetStyle(removeButton, 'lineHeight', '1');
-        removeButton.title = 'Retirer du dossier';
+        removeButton.title = 'Retirer de la liste';
         
         // Ajouter un gestionnaire d'événements pour le bouton de suppression
         removeButton.addEventListener('click', async (e) => {
-          e.stopPropagation(); // Empêcher la propagation
+          e.stopPropagation();
+          e.preventDefault();
           
           // Afficher le modal de confirmation
           const isConfirmed = await showDeleteConfirmModal(conv.title || 'Conversation sans titre', 'conversation');
           
           // Si la suppression est confirmée
           if (isConfirmed) {
-            // Supprimer la conversation du dossier
-            await removeConversationFromFolder(folder.id, conv.id);
-            
-            // Rafraîchir l'affichage
-            await renderFolders();
+            try {
+              // Supprimer la conversation autonome
+              await removeStandaloneConversation(conv.id);
+              // Rafraîchir l'interface après la suppression réussie
+              await renderFolders(targetListContainer); 
+            } catch (error) {
+              console.error("Erreur lors de la suppression de la conversation autonome:", error);
+              // Afficher un message d'erreur à l'utilisateur si nécessaire
+            }
           }
         });
         
@@ -580,7 +768,7 @@ export async function renderFolders(): Promise<void> {
         
         convItem.appendChild(convLink);
         convItem.appendChild(actionButtons);
-        conversationsContainer.appendChild(convItem);
+        targetListContainer.appendChild(convItem);
         
         // Afficher les boutons d'action au survol
         convItem.addEventListener('mouseenter', () => {
@@ -591,222 +779,17 @@ export async function renderFolders(): Promise<void> {
           safeSetStyle(actionButtons, 'opacity', '0');
         });
       }
-    } else {
-      // Message si le dossier est vide
-      const emptyFolder = document.createElement('div');
-      emptyFolder.textContent = 'Dossier vide';
-      safeSetStyle(emptyFolder, 'padding', '4px 0');
-      safeSetStyle(emptyFolder, 'color', '#888');
-      safeSetStyle(emptyFolder, 'fontStyle', 'italic');
-      safeSetStyle(emptyFolder, 'fontSize', '12px');
-      conversationsContainer.appendChild(emptyFolder);
     }
     
-    folderItem.appendChild(conversationsContainer);
-    foldersList.appendChild(folderItem);
-  }
-  
-  // Ensuite afficher les conversations autonomes (hors dossier)
-  const { getStandaloneConversations, removeStandaloneConversation } = await import('./conversation-operations');
-  const standaloneConversations = await getStandaloneConversations();
-  
-  if (standaloneConversations.length > 0) {
-    // Obtenir l'ID de la conversation active
-    const activeConversationId = getCurrentConversationId();
-    
-    for (const conv of standaloneConversations) {
-      const convItem = document.createElement('div');
-      convItem.className = 'le-chat-plus-conversation-item';
-      convItem.setAttribute('data-conversation-id', conv.id);
-      safeSetStyle(convItem, 'marginBottom', '0'); // Réduit l'espacement vertical
-      safeSetStyle(convItem, 'lineHeight', '1.8'); // Réduit l'espacement vertical
-      
-      // Vérifier si cette conversation est active
-      const isActive = conv.id === activeConversationId;
-      
-      // Titre de la conversation avec lien
-      const convLink = document.createElement('a');
-      convLink.textContent = conv.title || 'Conversation sans titre';
-      convLink.href = conv.url;
-      safeSetStyle(convLink, 'flex', '1');
-      safeSetStyle(convLink, 'textDecoration', 'none');
-      safeSetStyle(convLink, 'cursor', 'pointer');
-      safeSetStyle(convLink, 'fontSize', '11px');
-      safeSetStyle(convLink, 'marginLeft', '10px');
-      safeSetStyle(convLink, 'marginRight', '10px');
-      
-      // Appliquer la couleur en fonction de si la conversation est active ou non
-      if (isActive) {
-        safeSetStyle(convLink, 'color', 'var(--text-color-subtle)');
-        safeSetStyle(convLink, 'fontWeight', 'bold');
-        convItem.classList.add('active-conversation');
-      } else {
-        safeSetStyle(convLink, 'color', 'var(--text-color-muted)');
-      }
-      
-      safeSetStyle(convLink, 'whiteSpace', 'nowrap');
-      safeSetStyle(convLink, 'overflow', 'hidden');
-      safeSetStyle(convLink, 'textOverflow', 'ellipsis');
-      
-      // Ajouter un gestionnaire d'événements de double-clic pour l'édition du titre de la conversation
-      convLink.addEventListener('dblclick', (e) => {
-        e.stopPropagation(); // Empêcher la propagation
-        e.preventDefault(); // Empêcher la navigation
+    // Configurer le drag and drop
+    // Ce sera fait par un module séparé appelé par content.ts
         
-        // Rendre l'élément éditable
-        convLink.setAttribute('contenteditable', 'true');
-        convLink.focus();
-        
-        // Sélectionner tout le texte
-        const selection = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(convLink);
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-        
-        // Ajouter un style pour indiquer l'édition
-        safeSetStyle(convLink, 'cursor', 'text');
-        
-        // Désactiver temporairement le comportement du lien
-        const originalClickHandler = convLink.onclick;
-        convLink.onclick = (e) => {
-          e.preventDefault();
-          return false;
-        };
-        
-        // Gestionnaire pour terminer l'édition
-        const finishEditingConv = async () => {
-          convLink.removeAttribute('contenteditable');
-          safeSetStyle(convLink, 'background-color', 'transparent');
-          safeSetStyle(convLink, 'cursor', 'pointer');
-          
-          // Réactiver le comportement du lien
-          convLink.onclick = originalClickHandler;
-          
-          // Récupérer le nouveau titre
-          const newTitle = convLink.textContent?.trim() || conv.title || 'Conversation sans titre';
-          
-          // Si le titre a changé
-          if (newTitle !== conv.title && newTitle) {
-            // Importer et utiliser la fonction de renommage de conversation
-            const { renameConversation } = await import('./conversation-operations');
-            await renameConversation(conv.id, newTitle);
-            
-            // Rafraîchir l'affichage
-            await renderFolders();
-          }
-        };
-        
-        // Gestionnaires d'événements pour terminer l'édition
-        convLink.addEventListener('blur', finishEditingConv, { once: true });
-        convLink.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            finishEditingConv();
-          } else if (e.key === 'Escape') {
-            convLink.textContent = conv.title || 'Conversation sans titre'; // Annuler les modifications
-            convLink.blur();
-          }
-        });
-      });
-      
-      // Empêcher le comportement par défaut du lien et gérer la navigation
-      convLink.addEventListener('click', (e) => {
-        // Ne pas traiter le clic si nous sommes en train d'éditer le titre
-        if (convLink.getAttribute('contenteditable') === 'true') {
-          e.preventDefault();
-          return;
-        }
-        
-        // Variable pour détecter un double-clic
-        if ((convLink as any)._clickTimer) {
-          // Double-clic détecté, ne pas traiter comme un clic simple
-          clearTimeout((convLink as any)._clickTimer);
-          (convLink as any)._clickTimer = null;
-          e.preventDefault();
-          return;
-        }
-        
-        // Configurer un délai pour différencier le clic simple du double-clic
-        (convLink as any)._clickTimer = setTimeout(() => {
-          (convLink as any)._clickTimer = null;
-          
-          // Exécuter l'action de clic simple après le délai
-          handleConvLinkClick(e, conv, convLink as HTMLElement);
-        }, 250); // Délai de 250ms pour détecter un clic simple
-        
-        e.preventDefault();
-      });
-      
-      // Conteneur pour les boutons d'action
-      const actionButtons = document.createElement('div');
-      safeSetStyle(actionButtons, 'display', 'flex');
-      safeSetStyle(actionButtons, 'opacity', '0');
-      safeSetStyle(actionButtons, 'transition', 'opacity 0.2s');
-      safeSetStyle(actionButtons, 'height', '16px'); // Réduire la hauteur des boutons d'action
-      
-      // Bouton pour supprimer
-      const removeButton = document.createElement('button');
-      removeButton.textContent = '×';
-      safeSetStyle(removeButton, 'background', 'none');
-      safeSetStyle(removeButton, 'border', 'none');
-      safeSetStyle(removeButton, 'color', '#999');
-      safeSetStyle(removeButton, 'cursor', 'pointer');
-      safeSetStyle(removeButton, 'padding', '0');
-      safeSetStyle(removeButton, 'fontSize', '12px');
-      safeSetStyle(removeButton, 'lineHeight', '1');
-      removeButton.title = 'Retirer de la liste';
-      
-      // Ajouter un gestionnaire d'événements pour le bouton de suppression
-      removeButton.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        
-        // Afficher le modal de confirmation
-        const isConfirmed = await showDeleteConfirmModal(conv.title || 'Conversation sans titre', 'conversation');
-        
-        // Si la suppression est confirmée
-        if (isConfirmed) {
-                try {
-          // Supprimer la conversation autonome
-          await removeStandaloneConversation(conv.id);
-                  // Rafraîchir l'interface après la suppression réussie
-                  await renderFolders(); 
-                } catch (error) {
-                    console.error("Erreur lors de la suppression de la conversation autonome:", error);
-                    // Afficher un message d'erreur à l'utilisateur si nécessaire
-                }
-        }
-      });
-      
-      // Ajouter les boutons
-      actionButtons.appendChild(removeButton);
-      
-      convItem.appendChild(convLink);
-      convItem.appendChild(actionButtons);
-      foldersList.appendChild(convItem);
-      
-      // Afficher les boutons d'action au survol
-      convItem.addEventListener('mouseenter', () => {
-        safeSetStyle(actionButtons, 'opacity', '1');
-      });
-      
-      convItem.addEventListener('mouseleave', () => {
-        safeSetStyle(actionButtons, 'opacity', '0');
-      });
-    }
-  }
-  
-  // Configurer le drag and drop
-  // Ce sera fait par un module séparé appelé par content.ts
-        
-        console.log("RenderFolders END (terminé normalement)"); // <-- Log de fin
-    }
+    console.log("RenderFolders END (terminé normalement)"); // <-- Log de fin
   } catch (error) {
-      console.error("Erreur pendant renderFolders:", error);
-      console.log("RenderFolders END (erreur)");
+    console.error("Erreur pendant renderFolders:", error);
+    console.log("RenderFolders END (erreur)");
   } finally {
-      isRenderingFolders = false; // Libérer le verrou
+    isRenderingFolders = false; // Libérer le verrou
   }
 }
 

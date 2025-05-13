@@ -31,8 +31,6 @@ export function initMistralConversationsDragAndDrop(): void {
   
   // Observer les nouveaux éléments
   setupMutationObserver();
-  
-  console.log('[DragDrop] Module pour les conversations Mistral initialisé');
 }
 
 /**
@@ -99,8 +97,6 @@ function handleMistralConversationDragStart(e: MouseEvent, element: HTMLElement)
   // Prévenir le comportement par défaut pour éviter la navigation
   e.preventDefault();
   
-  console.log("[DragDrop:Mistral] Mousedown sur conversation Mistral:", element.getAttribute('href')?.split('/').pop());
-  
   // Extraire l'ID de conversation de l'URL
   const href = element.getAttribute('href');
   const conversationId = href ? href.split('/').pop() : null;
@@ -152,7 +148,6 @@ function handleMistralConversationDragMove(e: MouseEvent): void {
       // Empêcher le comportement par défaut SEULEMENT MAINTENANT qu'on drag vraiment
       e.preventDefault();
       dragState.isDragging = true;
-      console.log("[DragDrop:Mistral] Drag démarré pour conversation Mistral:", dragState.elementId);
       if (dragState.element) {
         dragState.element.classList.add('dragging');
         safeSetStyle(dragState.element, 'opacity', '0.6');
@@ -179,60 +174,62 @@ function handleMistralConversationDragMove(e: MouseEvent): void {
  * Gère le relâchement de la souris (fin du drag) pour une conversation Mistral
  */
 async function handleMistralConversationDragEnd(e: MouseEvent): Promise<void> {
-  console.log("[DragDrop:Mistral] Mouse up, isDragging =", dragState.isDragging, "elementId =", dragState.elementId);
-  
-  // Nettoyer les écouteurs d'événements globaux
-  if (mouseMoveHandler) {
-    window.removeEventListener('mousemove', mouseMoveHandler);
+  const folderActionsPopover = document.getElementById('le-chat-plus-folder-actions-popover');
+  let droppedInPopover = false;
+  let popoverListContainer: HTMLElement | null = null;
+
+  if (folderActionsPopover && dragState.potentialDropTarget && dragState.potentialDropTarget.element) {
+    if (dragState.potentialDropTarget.element.id === 'le-chat-plus-folder-popover-list-container') {
+      droppedInPopover = true;
+      popoverListContainer = dragState.potentialDropTarget.element;
+    } else if (folderActionsPopover.contains(dragState.potentialDropTarget.element)) {
+      const listContainer = dragState.potentialDropTarget.element.closest('#le-chat-plus-folder-popover-list-container');
+      if (listContainer) {
+        droppedInPopover = true;
+        popoverListContainer = listContainer as HTMLElement;
+      }
+    }
+  }
+
+  if (mouseMoveHandler) window.removeEventListener('mousemove', mouseMoveHandler);
+  if (mouseUpHandler) window.removeEventListener('mouseup', mouseUpHandler);
     mouseMoveHandler = null;
-  }
-  
-  if (mouseUpHandler) {
-    window.removeEventListener('mouseup', mouseUpHandler);
     mouseUpHandler = null;
-  }
-  
-  // Si on n'a pas glissé ou pas assez, nettoyer
+
   if (!dragState.isDragging) {
     const distance = Math.hypot(e.clientX - dragState.startPosition.x, e.clientY - dragState.startPosition.y);
     if (distance <= 5) {
-      console.log("[DragDrop:Mistral] Drag annulé (clic ou mouvement mineur)");
       cleanupDrag();
       return;
     }
     dragState.isDragging = true; 
   }
   
-  // Exécuter l'action de drop si on était en train de glisser
   if (dragState.isDragging && dragState.elementId && dragState.element && dragState.dragIndicator) {
     let operationSuccess = false;
     try {
-      // Appeler le gestionnaire centralisé
       operationSuccess = await executeDrop(dragState);
       
-      // Si une opération a réussi, rafraîchir l'UI
       if (operationSuccess) {
-          console.log("[DragDrop:Mistral] Opération réussie, rafraîchissement de l'UI.");
-          await renderFolders();
+          if (droppedInPopover && popoverListContainer) {
+            await renderFolders(popoverListContainer);
+          }
       }
     } catch (error) {
       console.error("[DragDrop:Mistral] Erreur lors de l'exécution du drop:", error);
       operationSuccess = false;
     } finally {
-        // Gérer l'animation de fin
         if (!operationSuccess && dragState.dragIndicator) {
              dragState.dragIndicator.style.transition = 'transform 0.2s ease-out, opacity 0.2s ease-out';
              dragState.dragIndicator.style.transform = 'scale(0) rotate(0deg)';
-      dragState.dragIndicator.style.opacity = '0';
+             dragState.dragIndicator.style.opacity = '0';
         } else if (operationSuccess && dragState.dragIndicator) {
              dragState.dragIndicator.style.transition = 'opacity 0.1s ease-out';
-      dragState.dragIndicator.style.opacity = '0';
+             dragState.dragIndicator.style.opacity = '0';
         }
-      // Nettoyer après un délai pour l'animation
-      setTimeout(cleanupDrag, 200);
+        setTimeout(cleanupDrag, 200);
     }
   } else {
-    // Si pas de drag valide, nettoyer immédiatement
     cleanupDrag();
   }
 } 

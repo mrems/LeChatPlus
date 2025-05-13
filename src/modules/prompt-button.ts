@@ -11,6 +11,10 @@ import { openSavePromptModal, openPromptListModal } from './modals';
 
 // ID pour le popover
 const POPOVER_ID = 'le-chat-plus-prompt-popover';
+// ID pour le nouveau bouton dossier
+const FOLDER_BUTTON_ID = 'le-chat-plus-folder-button';
+// ID pour le popover des actions de dossier
+const FOLDER_ACTIONS_POPOVER_ID = 'le-chat-plus-folder-actions-popover';
 
 /** Détecte le thème actuel (copié de modals.ts pour l'instant) */
 function isDarkThemeActive(): boolean {
@@ -85,17 +89,159 @@ function showPromptPopover(promptButton: HTMLElement): void {
   popover.style.left = `${rect.left}px`; 
 
   document.body.appendChild(popover);
+}
 
-  const closePopoverHandler = (event: MouseEvent) => {
-    if (!popover.contains(event.target as Node) && event.target !== promptButton) {
-      popover.remove();
-      document.removeEventListener('click', closePopoverHandler, true);
+// --- Popover pour les actions de dossier ---
+async function showFolderActionsPopover(folderButton: HTMLElement): Promise<void> {
+  const existingPopover = document.getElementById(FOLDER_ACTIONS_POPOVER_ID);
+  if (existingPopover) {
+    existingPopover.remove();
+    return; 
+  }
+
+  // Imports dynamiques ici pour éviter les dépendances circulaires et alléger le chargement initial
+  const { renderFolders, updateActiveConversationHighlight } = await import('./ui-renderer');
+  const { safeSetStyle } = await import('./ui-helpers');
+  const { showFolderCreateModal } = await import('./modal-system');
+  const { getFolders, collapseAllFolders, expandAllFolders, createFolder } = await import('./folder-operations');
+  // applyInteractiveStyles est déjà défini globalement dans modals.ts, 
+  // mais pour la propreté, on pourrait l'importer ou la rendre plus locale.
+  // Pour l'instant, on suppose qu'elle est accessible ou on la duplique/adapte si besoin.
+  // Si applyInteractiveStyles n'est pas accessible, il faudra la copier/importer.
+  // Pour cet exemple, je vais supposer qu'elle est disponible ou la définir localement si nécessaire.
+  // Une meilleure solution serait de la mettre dans ui-helpers.ts et l'exporter.
+  // Pour l'instant, je vais copier une version simplifiée pour les boutons du popover.
+
+  const styleBoutonPopover = (bouton: HTMLButtonElement, isDarkTheme: boolean) => {
+    Object.assign(bouton.style, {
+        background: 'transparent',
+        border: isDarkTheme ? '1px solid #555' : '1px solid #ccc',
+        color: isDarkTheme ? '#eee' : '#333',
+        padding: '5px 8px',
+        borderRadius: '4px',
+        cursor: 'pointer',
+        marginLeft: '5px',
+        fontSize: '12px'
+    });
+    bouton.onmouseover = () => bouton.style.borderColor = isDarkTheme ? '#777' : '#aaa';
+    bouton.onmouseout = () => bouton.style.borderColor = isDarkTheme ? '#555' : '#ccc';
+  };
+
+
+  const isDark = isDarkThemeActive();
+
+  const popover = document.createElement('div');
+  popover.id = FOLDER_ACTIONS_POPOVER_ID;
+  Object.assign(popover.style, {
+    position: 'absolute', zIndex: '10000', 
+    background: isDark ? '#3a3a3a' : '#ffffff', 
+    border: isDark ? '1px solid #555555' : '1px solid #dddddd', 
+    color: isDark ? '#e0e0e0' : '#333333', 
+    borderRadius: '8px', padding: '12px',
+    boxShadow: isDark ? '0 4px 12px rgba(0, 0, 0, 0.4)' : '0 4px 12px rgba(0, 0, 0, 0.15)',
+    width: '250px', // Largeur à ajuster
+    minHeight: '150px' // Hauteur minimale pour la future liste
+  });
+
+  // --- En-tête du Popover avec contrôles ---
+  const popoverHeaderControls = document.createElement('div');
+  safeSetStyle(popoverHeaderControls, 'display', 'flex');
+  safeSetStyle(popoverHeaderControls, 'justifyContent', 'space-between');
+  safeSetStyle(popoverHeaderControls, 'alignItems', 'center');
+  safeSetStyle(popoverHeaderControls, 'marginBottom', '10px');
+  // Pas de bordure pour un look plus intégré au popover
+
+  // Titre réel déplacé ici
+  const popoverTitleText = document.createElement('h4');
+  popoverTitleText.textContent = 'Dossiers Le Chat';
+  Object.assign(popoverTitleText.style, {
+    margin: '0', fontSize: '14px', fontWeight: '600',
+    color: isDark ? '#f0f0f0' : '#222222'
+  });
+  popoverHeaderControls.appendChild(popoverTitleText);
+
+  const headerButtonsContainer = document.createElement('div');
+  safeSetStyle(headerButtonsContainer, 'display', 'flex');
+  safeSetStyle(headerButtonsContainer, 'alignItems', 'center');
+  popoverHeaderControls.appendChild(headerButtonsContainer);
+
+  // Bouton Ajouter (+)
+  const addButton = document.createElement('button');
+  addButton.innerHTML = '＋';
+  addButton.title = 'Créer un dossier';
+  styleBoutonPopover(addButton, isDark);
+  addButton.onclick = async () => {
+    const folderName = await showFolderCreateModal();
+    if (folderName && folderName.trim() !== '') {
+      try {
+        await createFolder(folderName.trim()); // APPEL EXPLICITE ICI
+        await renderFolders(folderListContainer); // Rafraîchir la liste dans le popover
+        await updateActiveConversationHighlight();
+        await updateToggleVisuals(); // Mettre à jour l'état du bouton Ouvrir/Fermer tout
+      } catch (error) {
+        console.error("Erreur lors de la création du dossier:", error);
+        // Gérer l'erreur, peut-être afficher une notification à l'utilisateur
+      }
     }
   };
+  headerButtonsContainer.appendChild(addButton);
+
+  // Bouton Tout Ouvrir/Fermer
+  const toggleButton = document.createElement('button');
+  const iconOpen = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="19 9 12 2 5 9"></polyline></svg>`;
+  const iconClosed = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 12 16 19 9"></polyline></svg>`;
   
-  setTimeout(() => {
-    document.addEventListener('click', closePopoverHandler, true);
-  }, 0);
+  const updateToggleVisuals = async () => {
+    const folders = await getFolders();
+    const anyOpen = folders.some(f => f.expanded);
+    toggleButton.innerHTML = anyOpen ? iconOpen : iconClosed;
+    toggleButton.title = anyOpen ? 'Tout Fermer' : 'Tout Ouvrir';
+  };
+  styleBoutonPopover(toggleButton, isDark);
+  await updateToggleVisuals(); // État initial
+
+  toggleButton.onclick = async () => {
+    const folders = await getFolders();
+    const anyOpen = folders.some(f => f.expanded);
+    if (anyOpen) await collapseAllFolders(); else await expandAllFolders();
+    await renderFolders(folderListContainer);
+    await updateToggleVisuals();
+  };
+  headerButtonsContainer.appendChild(toggleButton);
+
+  popover.insertBefore(popoverHeaderControls, popover.firstChild); // Insérer l'en-tête en haut
+  // Supprimer l'ancien titre qui était directement dans le popover
+  const oldTitle = popover.querySelector('h4');
+  if (oldTitle && oldTitle.parentNode === popover && oldTitle !== popoverTitleText) {
+      oldTitle.remove();
+  }
+
+  // Conteneur pour la liste des dossiers (sera peuplé plus tard)
+  const folderListContainer = document.createElement('div');
+  folderListContainer.id = 'le-chat-plus-folder-popover-list-container'; // ID unique
+  folderListContainer.textContent = 'Chargement des dossiers...'; // Placeholder
+  // Styles pour le défilement si nécessaire
+  Object.assign(folderListContainer.style, {
+    maxHeight: '300px', // Hauteur max avant défilement
+    overflowY: 'auto',
+    paddingRight: '5px' // Pour la barre de défilement
+  });
+  popover.appendChild(folderListContainer);
+
+  // Appel pour peupler la liste des dossiers
+  try {
+    await renderFolders(folderListContainer); // Passer le conteneur spécifique
+    await updateActiveConversationHighlight();
+  } catch (error) {
+    console.error("Le Chat+ : Erreur lors du rendu des dossiers dans le popover:", error);
+    folderListContainer.textContent = "Erreur chargement dossiers.";
+  }
+
+  const rect = folderButton.getBoundingClientRect();
+  popover.style.bottom = `${window.innerHeight - rect.top}px`; 
+  popover.style.left = `${rect.left}px`; 
+
+  document.body.appendChild(popover);
 }
 
 // Sélecteurs et constantes
@@ -141,6 +287,23 @@ function createToolsIcon(): SVGElement {
   svg.setAttribute('stroke-linejoin', 'round');
   // Icône clé à molette
   svg.innerHTML = `<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>`; 
+  svg.style.display = 'block';
+  svg.style.margin = 'auto';
+  return svg;
+}
+
+function createFolderIcon(): SVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', '18');
+  svg.setAttribute('height', '18');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  // Icône dossier simple
+  svg.innerHTML = `<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>`;
   svg.style.display = 'block';
   svg.style.margin = 'auto';
   return svg;
@@ -198,6 +361,9 @@ export function injectAndReplaceButtons(): void {
     
     const currentToolsButton = document.getElementById(TOOLS_BUTTON_ID) as HTMLButtonElement | null;
     if (currentToolsButton) applyButtonStyle(currentToolsButton, currentAddFilesButton, true);
+
+    const currentFolderButton = document.getElementById(FOLDER_BUTTON_ID) as HTMLButtonElement | null;
+    if (currentFolderButton) applyButtonStyle(currentFolderButton, currentAddFilesButton, true);
   });
   globalThemeObserver.start(); 
 
@@ -219,28 +385,67 @@ export function injectAndReplaceButtons(): void {
             paddingLeft: '10px'
         });
         originalParentNode.insertBefore(buttonWrapper, addFilesButton);
-        buttonWrapper.appendChild(addFilesButton);
+        buttonWrapper.appendChild(addFilesButton); // addFilesButton est le premier enfant
         console.log("Le Chat+ : Wrapper de boutons créé.");
     } else {
         if (!buttonWrapper.contains(addFilesButton)) {
-            buttonWrapper.appendChild(addFilesButton);
+            buttonWrapper.appendChild(addFilesButton); // S'assurer qu'il est dans le wrapper
         }
-        buttonWrapper.style.gap = '10px'; 
     }
     
     const parentNode = buttonWrapper; 
 
-    // --- Injection/Gestion dans le nouvel ordre : Outils -> Bibliothèque -> Prompt ---
+    // S'assurer que addFilesButton est le premier enfant du wrapper
+    if (parentNode.firstChild !== addFilesButton && parentNode.contains(addFilesButton)) {
+        parentNode.insertBefore(addFilesButton, parentNode.firstChild);
+    }
 
-    // --- 1. Gérer le bouton Outils (insérer APRÈS AddFiles) ---
+    let currentRefNode: HTMLElement = addFilesButton; // Référence pour l'insertion
+
+    // --- Ordre d'injection : AddFiles -> Bibliothèque -> Outils -> Dossier -> Prompt ---
+
+    // --- 1. Gérer le bouton Bibliothèque ---
+    let currentLibraryButton = document.getElementById(LIBRARY_BUTTON_ID) as HTMLButtonElement | null;
+    const originalLibraryButton = document.querySelector<HTMLElement>(`${LIBRARY_BUTTON_SELECTOR}:not(.${REPLACED_BUTTON_MARKER_CLASS})`);
+
+    if (!currentLibraryButton && originalLibraryButton) { 
+        const newLibraryButton = document.createElement('button');
+        newLibraryButton.id = LIBRARY_BUTTON_ID; 
+        newLibraryButton.type = 'button';
+        newLibraryButton.title = originalLibraryButton.textContent || 'Bibliothèque';
+        newLibraryButton.classList.add(ICON_BUTTON_CLASS);
+        newLibraryButton.appendChild(createLibraryIcon());
+        applyButtonStyle(newLibraryButton, addFilesButton, true);
+        newLibraryButton.onclick = () => originalLibraryButton.click(); 
+        parentNode.insertBefore(newLibraryButton, currentRefNode.nextSibling);
+        currentLibraryButton = newLibraryButton; 
+        console.log("Le Chat+ : Bouton Bibliothèque injecté.");
+    } else if (currentLibraryButton && (currentLibraryButton.parentNode !== parentNode || currentLibraryButton.previousSibling !== currentRefNode)) {
+        parentNode.insertBefore(currentLibraryButton, currentRefNode.nextSibling);
+        console.log("Le Chat+ : Bouton Bibliothèque repositionné.");
+    }
+    // Mettre à jour la référence si le bouton a été placé avec succès
+    if (currentLibraryButton && currentLibraryButton.parentNode === parentNode && currentLibraryButton.previousSibling === currentRefNode) {
+        currentRefNode = currentLibraryButton;
+        if (originalLibraryButton && !originalLibraryButton.classList.contains(REPLACED_BUTTON_MARKER_CLASS)) {
+            originalLibraryButton.classList.add(REPLACED_BUTTON_MARKER_CLASS);
+            originalLibraryButton.style.display = 'none';
+        }
+    } else if (currentLibraryButton && currentLibraryButton.parentNode === parentNode && currentRefNode === addFilesButton && !addFilesButton.nextSibling) { 
+        // Cas spécial: si addFilesButton était seul et Library a été ajouté, il devient la ref
+         currentRefNode = currentLibraryButton;
+          if (originalLibraryButton && !originalLibraryButton.classList.contains(REPLACED_BUTTON_MARKER_CLASS)) {
+            originalLibraryButton.classList.add(REPLACED_BUTTON_MARKER_CLASS);
+            originalLibraryButton.style.display = 'none';
+        }
+    }
+
+
+    // --- 2. Gérer le bouton Outils ---
     let currentToolsButton = document.getElementById(TOOLS_BUTTON_ID) as HTMLButtonElement | null;
-    if (!currentToolsButton) { 
         const originalToolsButton = document.querySelector<HTMLElement>(`${TOOLS_BUTTON_SELECTOR}:not(.${REPLACED_BUTTON_MARKER_CLASS})`);
-        if (originalToolsButton) {
-            if (!originalToolsButton.classList.contains(REPLACED_BUTTON_MARKER_CLASS)) {
-                originalToolsButton.classList.add(REPLACED_BUTTON_MARKER_CLASS);
-                originalToolsButton.style.display = 'none'; 
-            }
+
+    if (!currentToolsButton && originalToolsButton) { 
             const newToolsButton = document.createElement('button');
             newToolsButton.id = TOOLS_BUTTON_ID; 
             newToolsButton.type = 'button';
@@ -249,42 +454,60 @@ export function injectAndReplaceButtons(): void {
             newToolsButton.appendChild(createToolsIcon());
             applyButtonStyle(newToolsButton, addFilesButton, true);
             newToolsButton.onclick = () => originalToolsButton.click(); 
-            parentNode.insertBefore(newToolsButton, addFilesButton.nextSibling);
+        parentNode.insertBefore(newToolsButton, currentRefNode.nextSibling);
             currentToolsButton = newToolsButton; 
-        }
-    } else if (!parentNode.contains(currentToolsButton)) {
-        parentNode.insertBefore(currentToolsButton, addFilesButton.nextSibling);
+        console.log("Le Chat+ : Bouton Outils injecté.");
+    } else if (currentToolsButton && (currentToolsButton.parentNode !== parentNode || currentToolsButton.previousSibling !== currentRefNode)) {
+        parentNode.insertBefore(currentToolsButton, currentRefNode.nextSibling);
+        console.log("Le Chat+ : Bouton Outils repositionné.");
     }
-    if (currentToolsButton && !toolsButtonRef) toolsButtonRef = currentToolsButton;
-
-    // --- 2. Gérer le bouton Bibliothèque (insérer APRÈS Outils ou AddFiles) ---
-    let currentLibraryButton = document.getElementById(LIBRARY_BUTTON_ID) as HTMLButtonElement | null;
-    if (!currentLibraryButton) { 
-        const originalLibraryButton = document.querySelector<HTMLElement>(`${LIBRARY_BUTTON_SELECTOR}:not(.${REPLACED_BUTTON_MARKER_CLASS})`);
-        if (originalLibraryButton) {
-             if (!originalLibraryButton.classList.contains(REPLACED_BUTTON_MARKER_CLASS)) {
-                 originalLibraryButton.classList.add(REPLACED_BUTTON_MARKER_CLASS);
-                 originalLibraryButton.style.display = 'none'; 
-            }
-            const newLibraryButton = document.createElement('button');
-            newLibraryButton.id = LIBRARY_BUTTON_ID; 
-            newLibraryButton.type = 'button';
-            newLibraryButton.title = originalLibraryButton.textContent || 'Bibliothèque';
-            newLibraryButton.classList.add(ICON_BUTTON_CLASS);
-            newLibraryButton.appendChild(createLibraryIcon());
-            applyButtonStyle(newLibraryButton, addFilesButton, true);
-            newLibraryButton.onclick = () => originalLibraryButton.click(); 
-            const insertAfterTools = currentToolsButton || addFilesButton;
-            parentNode.insertBefore(newLibraryButton, insertAfterTools.nextSibling);
-            currentLibraryButton = newLibraryButton; 
+     // Mettre à jour la référence
+    if (currentToolsButton && currentToolsButton.parentNode === parentNode && currentToolsButton.previousSibling === currentRefNode) {
+        currentRefNode = currentToolsButton;
+        if (originalToolsButton && !originalToolsButton.classList.contains(REPLACED_BUTTON_MARKER_CLASS)) {
+            originalToolsButton.classList.add(REPLACED_BUTTON_MARKER_CLASS);
+            originalToolsButton.style.display = 'none';
         }
-    } else if (!parentNode.contains(currentLibraryButton)){
-        const insertAfterTools = currentToolsButton || addFilesButton;
-        parentNode.insertBefore(currentLibraryButton, insertAfterTools.nextSibling);
+    } else if (currentToolsButton && currentToolsButton.parentNode === parentNode && currentRefNode.nextSibling === currentToolsButton && currentRefNode !== currentToolsButton) {
+      // Cas où il est bien après currentRefNode mais currentRefNode.previousSibling n'est pas directement lui (ex: currentRefNode est addFilesButton)
+      currentRefNode = currentToolsButton;
+      if (originalToolsButton && !originalToolsButton.classList.contains(REPLACED_BUTTON_MARKER_CLASS)) {
+          originalToolsButton.classList.add(REPLACED_BUTTON_MARKER_CLASS);
+          originalToolsButton.style.display = 'none';
+      }
     }
-    if (currentLibraryButton && !libraryButtonRef) libraryButtonRef = currentLibraryButton;
 
-    // --- 3. Assurer l'existence du bouton Prompt { } (insérer APRÈS Bibliothèque ou Outils ou AddFiles) ---
+
+    // --- 3. Gérer le bouton Dossier ---
+    let currentFolderButton = document.getElementById(FOLDER_BUTTON_ID) as HTMLButtonElement | null;
+    if (!currentFolderButton) {
+      const newFolderButton = document.createElement('button');
+      newFolderButton.id = FOLDER_BUTTON_ID;
+      newFolderButton.type = 'button';
+      newFolderButton.title = 'Ouvrir les dossiers de chat';
+      newFolderButton.classList.add(ICON_BUTTON_CLASS);
+      newFolderButton.appendChild(createFolderIcon());
+      applyButtonStyle(newFolderButton, addFilesButton, true);
+      newFolderButton.onclick = (event) => {
+        event.stopPropagation();
+        showFolderActionsPopover(newFolderButton);
+      };
+      parentNode.insertBefore(newFolderButton, currentRefNode.nextSibling);
+      currentFolderButton = newFolderButton;
+      console.log("Le Chat+ : Bouton dossier injecté.");
+    } else if (currentFolderButton && (currentFolderButton.parentNode !== parentNode || currentFolderButton.previousSibling !== currentRefNode)) {
+       parentNode.insertBefore(currentFolderButton, currentRefNode.nextSibling);
+       console.log("Le Chat+ : Bouton dossier repositionné.");
+    }
+    // Mettre à jour la référence
+    if (currentFolderButton && currentFolderButton.parentNode === parentNode && currentFolderButton.previousSibling === currentRefNode) {
+        currentRefNode = currentFolderButton;
+    } else if (currentFolderButton && currentFolderButton.parentNode === parentNode && currentRefNode.nextSibling === currentFolderButton && currentRefNode !== currentFolderButton) {
+      currentRefNode = currentFolderButton;
+    }
+
+
+    // --- 4. Gérer le bouton Prompt ---
     let currentPromptButton = document.getElementById(PROMPT_BUTTON_ID) as HTMLButtonElement | null;
     if (!currentPromptButton) {
         const newPromptButton = document.createElement('button');
@@ -294,19 +517,26 @@ export function injectAndReplaceButtons(): void {
         newPromptButton.title = 'Gérer les prompts'; 
         applyButtonStyle(newPromptButton, addFilesButton, false);
         newPromptButton.addEventListener('click', (event) => { event.stopPropagation(); showPromptPopover(newPromptButton); });
-        const insertAfterLib = currentLibraryButton || currentToolsButton || addFilesButton;
-        parentNode.insertBefore(newPromptButton, insertAfterLib.nextSibling);
+        parentNode.insertBefore(newPromptButton, currentRefNode.nextSibling);
         currentPromptButton = newPromptButton; 
-    } else if(!parentNode.contains(currentPromptButton)){
-         const insertAfterLib = currentLibraryButton || currentToolsButton || addFilesButton;
-         parentNode.insertBefore(currentPromptButton, insertAfterLib.nextSibling);
+        console.log("Le Chat+ : Bouton de prompt injecté.");
+    } else if (currentPromptButton && (currentPromptButton.parentNode !== parentNode || currentPromptButton.previousSibling !== currentRefNode)) {
+        parentNode.insertBefore(currentPromptButton, currentRefNode.nextSibling);
+        console.log("Le Chat+ : Bouton Prompt repositionné.");
     }
-    if (currentPromptButton && !promptButtonRef) promptButtonRef = currentPromptButton;
+    // currentRefNode n'a plus besoin d'être mis à jour car c'est le dernier bouton.
     
-    document.querySelectorAll<HTMLElement>(`${LIBRARY_BUTTON_SELECTOR}:not(.${REPLACED_BUTTON_MARKER_CLASS}), ${TOOLS_BUTTON_SELECTOR}:not(.${REPLACED_BUTTON_MARKER_CLASS})`).forEach(btn => {
-        if (!btn.classList.contains(REPLACED_BUTTON_MARKER_CLASS)) {
-            btn.classList.add(REPLACED_BUTTON_MARKER_CLASS);
-            btn.style.display = 'none';
+    // S'assurer que les boutons originaux qui ont été remplacés sont bien cachés
+    // Cela est géré dans chaque bloc maintenant si le remplacement est confirmé.
+    // Mais une vérification finale peut être utile pour ceux qui n'auraient pas été créés/déplacés mais dont l'original existe.
+    const allOriginalSelectors = [LIBRARY_BUTTON_SELECTOR, TOOLS_BUTTON_SELECTOR];
+    allOriginalSelectors.forEach(selector => {
+        const originalBtn = document.querySelector<HTMLElement>(`${selector}:not(.${REPLACED_BUTTON_MARKER_CLASS})`);
+        if (originalBtn) {
+            // Si son remplaçant existe et est dans le DOM, ou si on a décidé de le cacher de toute façon.
+            // Pour l'instant, on se fie au marquage fait lors de la création/repositionnement.
+            // Si un bouton original existe mais son remplaçant n'a pas été injecté (ex: currentToolsButton est null),
+            // il ne sera pas caché par cette logique, ce qui est correct.
         }
     });
 

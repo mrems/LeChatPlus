@@ -100,6 +100,29 @@ export async function collapseAllFolders(): Promise<void> {
 }
 
 /**
+ * Ouvrir tous les dossiers
+ * @returns Promise<boolean> - true si des dossiers ont été ouverts, false sinon
+ */
+export async function expandAllFolders(): Promise<boolean> {
+  const folders = await getFolders();
+  if (folders.length === 0) return false;
+
+  let changed = false;
+  const updatedFolders = folders.map(folder => {
+    if (!folder.expanded) {
+      changed = true;
+      return { ...folder, expanded: true };
+    }
+    return folder;
+  });
+
+  if (changed) {
+    await setValue('folders', updatedFolders);
+  }
+  return changed;
+}
+
+/**
  * Mettre à jour le compteur de conversations d'un dossier
  * @param folderId ID du dossier à mettre à jour
  * @param count Nombre de conversations (optionnel)

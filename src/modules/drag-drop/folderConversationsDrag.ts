@@ -31,8 +31,6 @@ export function initFolderConversationsDragAndDrop(): void {
   
   // Observer les nouveaux éléments
   setupMutationObserver();
-  
-  console.log('[DragDrop] Module pour les conversations en dossier initialisé');
 }
 
 /**
@@ -106,8 +104,6 @@ function handleFolderConversationDragStart(e: MouseEvent, element: HTMLElement):
     return;
   }
   
-  console.log("[DragDrop:Folder] Mousedown sur conversation en dossier:", element.getAttribute('data-conversation-id'));
-  
   // Récupérer l'ID de la conversation
   const conversationId = element.getAttribute('data-conversation-id');
   
@@ -162,7 +158,6 @@ function handleFolderConversationDragMove(e: MouseEvent): void {
       // Empêcher le comportement par défaut SEULEMENT MAINTENANT qu'on drag vraiment
       e.preventDefault();
       dragState.isDragging = true;
-      console.log("[DragDrop:Folder] Drag démarré pour conversation en dossier:", dragState.elementId);
       if (dragState.element) {
         dragState.element.classList.add('dragging');
         safeSetStyle(dragState.element, 'opacity', '0.5');
@@ -185,54 +180,64 @@ function handleFolderConversationDragMove(e: MouseEvent): void {
  * Simplifié pour appeler executeDrop
  */
 async function handleFolderConversationDragEnd(e: MouseEvent): Promise<void> {
-  console.log("[DragDrop:Folder] Mouse up, isDragging =", dragState.isDragging, "elementId =", dragState.elementId);
-  
+  const folderActionsPopover = document.getElementById('le-chat-plus-folder-actions-popover');
+  let droppedInPopover = false;
+  let popoverListContainer: HTMLElement | null = null;
+
+  if (folderActionsPopover && dragState.potentialDropTarget && dragState.potentialDropTarget.element) {
+    if (dragState.potentialDropTarget.element.id === 'le-chat-plus-folder-popover-list-container') {
+      droppedInPopover = true;
+      popoverListContainer = dragState.potentialDropTarget.element;
+    } else if (folderActionsPopover.contains(dragState.potentialDropTarget.element)) {
+      const listContainer = dragState.potentialDropTarget.element.closest('#le-chat-plus-folder-popover-list-container');
+      if (listContainer) {
+        droppedInPopover = true;
+        popoverListContainer = listContainer as HTMLElement;
+      }
+    }
+  }
+
   if (mouseMoveHandler) window.removeEventListener('mousemove', mouseMoveHandler);
   if (mouseUpHandler) window.removeEventListener('mouseup', mouseUpHandler);
     mouseMoveHandler = null;
     mouseUpHandler = null;
 
-  // Si on n'a pas glissé ou pas assez, nettoyer
   if (!dragState.isDragging) {
     const distance = Math.hypot(e.clientX - dragState.startPosition.x, e.clientY - dragState.startPosition.y);
     if (distance <= 5) {
-      console.log("[DragDrop:Folder] Drag annulé (simple clic ou mouvement mineur)");
       cleanupDrag();
       return;
     }
     dragState.isDragging = true; 
   }
   
-  // Exécuter l'action de drop si on était en train de glisser
   if (dragState.isDragging && dragState.elementId && dragState.element && dragState.sourceContainer && dragState.dragIndicator) {
     let operationSuccess = false;
     try {
-      // Appeler le gestionnaire centralisé
       operationSuccess = await executeDrop(dragState);
       
-      // Si une opération a réussi, rafraîchir l'UI
       if (operationSuccess) {
-          console.log("[DragDrop:Folder] Opération réussie, rafraîchissement de l'UI.");
-              await renderFolders();
-            }
-          } catch (error) {
+          if (droppedInPopover && popoverListContainer) {
+            await renderFolders(popoverListContainer);
+          } else {
+            await renderFolders();
+          }
+      }
+    } catch (error) {
       console.error("[DragDrop:Folder] Erreur lors de l'exécution du drop:", error);
       operationSuccess = false;
     } finally {
-        // Gérer l'animation de fin
         if (!operationSuccess && dragState.dragIndicator) {
              dragState.dragIndicator.style.transition = 'transform 0.2s ease-out, opacity 0.2s ease-out';
-        dragState.dragIndicator.style.transform = 'scale(0) rotate(0deg)';
-        dragState.dragIndicator.style.opacity = '0';
+             dragState.dragIndicator.style.transform = 'scale(0) rotate(0deg)';
+             dragState.dragIndicator.style.opacity = '0';
         } else if (operationSuccess && dragState.dragIndicator) {
              dragState.dragIndicator.style.transition = 'opacity 0.1s ease-out';
              dragState.dragIndicator.style.opacity = '0';
-      }
-      // Nettoyer après un délai pour l'animation
-      setTimeout(cleanupDrag, 200);
+        }
+        setTimeout(cleanupDrag, 200);
     }
   } else {
-    // Si pas de drag valide, nettoyer immédiatement
     cleanupDrag();
   }
 } 

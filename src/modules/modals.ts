@@ -498,4 +498,13 @@ function insertPromptContent(content: string): void {
     textarea.selectionEnd = cursorPos + content.length;
     textarea.focus();
   }
-} 
+}
+
+// --- Nouvelle Modale pour les Dossiers ---
+
+// Le bloc de la fonction openFolderModal précédemment commenté est supprimé.
+
+// --- Fin de la Nouvelle Modale pour les Dossiers ---
+
+// **Important**: Renommer l'exportation ou la fonction appelée dans mistral.ts si nécessaire.
+// Par exemple, si mistral.ts appelle `injectPromptButton`, il faut maintenant qu'il appelle `injectAndReplaceButtons`. 

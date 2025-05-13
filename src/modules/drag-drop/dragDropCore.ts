@@ -389,15 +389,22 @@ export function updateDropTarget(e: MouseEvent): void {
   if (!potentialTarget) {
       potentialTarget = elementsUnderCursor.find(el => 
         el.id === 'le-chat-plus-folders-list' || 
-        (el.closest && el.closest('#le-chat-plus-folders-list')) // Cibler aussi si on est sur un enfant direct
-        // Ajouter d'autres sélecteurs si nécessaire pour la zone racine
+        el.id === 'le-chat-plus-folder-popover-list-container' ||
+        (el.closest && (el.closest('#le-chat-plus-folders-list') || el.closest('#le-chat-plus-folder-popover-list-container'))) 
       ) as HTMLElement | null;
       if (potentialTarget) {
-          // S'assurer qu'on cible bien la liste elle-même
-          potentialTarget = document.getElementById('le-chat-plus-folders-list'); 
+          // S'assurer qu'on cible bien la liste elle-même (si on a trouvé un enfant)
+          if (potentialTarget.id === 'le-chat-plus-folders-list' || potentialTarget.id === 'le-chat-plus-folder-popover-list-container') {
+            // C'est bon, potentialTarget est déjà le bon conteneur
+          } else if (potentialTarget.closest('#le-chat-plus-folder-popover-list-container')) {
+            potentialTarget = potentialTarget.closest('#le-chat-plus-folder-popover-list-container');
+          } else {
+            potentialTarget = document.getElementById('le-chat-plus-folders-list'); 
+          }
+          
           if (potentialTarget) {
             targetType = 'rootArea';
-            targetPosition = 'inside';
+            targetPosition = 'inside'; // Pour une zone racine, 'inside' signifie généralement à la fin
             potentialTarget.classList.add('drag-over');
           }
       }

@@ -129,17 +129,11 @@ async function main() {
   // Injecter les styles CSS spécifiques au drag and drop
   injectDragAndDropStyles();
   
-  // Configurer l'observateur DOM pour réinjecter l'interface si nécessaire
-  setupDOMObserver(injectFoldersUI);
-  
   // Configurer l'écouteur pour les changements d'URL
   setupURLChangeListener();
   
   // Configurer l'écouteur pour les messages de l'extension
   setupExtensionMessageListener();
-  
-  // Injecter l'interface des dossiers
-  await injectFoldersUI();
   
   // Configurer le drag and drop pour les dossiers et conversations
   setupDragAndDropFeatures();
