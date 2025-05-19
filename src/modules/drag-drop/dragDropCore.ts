@@ -87,39 +87,8 @@ export function injectDragAndDropStyles(): void {
     
     /* Styles pour les zones de dépôt */
     .drag-over {
-      background-color: rgba(255, 85, 0, 0.08);
       border-radius: 4px;
       transition: background-color 0.2s ease;
-    }
-    
-    /* Indicateurs de position pour le drop entre éléments */
-    .drag-over-top::before,
-    .drag-over-bottom::after {
-        content: '';
-        position: absolute;
-        left: 5px;
-        right: 5px;
-        height: 2px;
-        background-color: #ff5500;
-        z-index: 10;
-        pointer-events: none;
-    }
-    .drag-over-top::before {
-        top: -1px;
-    }
-    .drag-over-bottom::after {
-        bottom: -1px;
-    }
-    
-    /* Style spécifique pour le conteneur de dossiers */
-    .le-chat-plus-folders-container.drag-over,
-    .le-chat-plus-folders-title.drag-over,
-    .le-chat-plus-folders-wrapper.drag-over {
-      background-color: rgba(255, 85, 0, 0.08);
-      border-radius: 4px;
-      outline: 2px dashed rgba(255, 85, 0, 0.3);
-      outline-offset: -2px;
-      transition: all 0.2s ease;
     }
     
     /* Animation lors d'un dépôt réussi */
@@ -419,11 +388,7 @@ export function updateDropTarget(e: MouseEvent): void {
   
   // Optionnel: ajuster le style de l'indicateur de drag
   if (dragState.dragIndicator) {
-      if (targetType) {
-          dragState.dragIndicator.style.borderColor = 'rgba(255, 85, 0, 0.6)'; // Couleur orange pour indiquer une cible valide
-      } else {
-          dragState.dragIndicator.style.borderColor = 'rgba(221, 221, 221, 0.5)'; // Couleur par défaut
-      }
+      dragState.dragIndicator.style.borderColor = 'rgba(221, 221, 221, 0.5)'; // Toujours la couleur par défaut
   }
 }
 

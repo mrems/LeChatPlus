@@ -180,20 +180,25 @@ function handleFolderConversationDragMove(e: MouseEvent): void {
  * Simplifié pour appeler executeDrop
  */
 async function handleFolderConversationDragEnd(e: MouseEvent): Promise<void> {
-  const folderActionsPopover = document.getElementById('le-chat-plus-folder-actions-popover');
-  let droppedInPopover = false;
   let popoverListContainer: HTMLElement | null = null;
+  const folderActionsPopover = document.getElementById('le-chat-plus-folder-actions-popover');
 
-  if (folderActionsPopover && dragState.potentialDropTarget && dragState.potentialDropTarget.element) {
-    if (dragState.potentialDropTarget.element.id === 'le-chat-plus-folder-popover-list-container') {
-      droppedInPopover = true;
-      popoverListContainer = dragState.potentialDropTarget.element;
-    } else if (folderActionsPopover.contains(dragState.potentialDropTarget.element)) {
-      const listContainer = dragState.potentialDropTarget.element.closest('#le-chat-plus-folder-popover-list-container');
-      if (listContainer) {
-        droppedInPopover = true;
-        popoverListContainer = listContainer as HTMLElement;
-      }
+  // Déterminer si le popover est pertinent AVANT de nettoyer les listeners
+  // pour pouvoir utiliser dragState.potentialDropTarget si besoin.
+  if (folderActionsPopover && folderActionsPopover.style.display !== 'none') {
+    const internalPopoverList = document.getElementById('le-chat-plus-folder-popover-list-container');
+    if (internalPopoverList) {
+        // Si la cible du drop est le conteneur du popover ou un élément dedans
+        if (dragState.potentialDropTarget && dragState.potentialDropTarget.element && 
+            (dragState.potentialDropTarget.element === internalPopoverList || internalPopoverList.contains(dragState.potentialDropTarget.element))) {
+            popoverListContainer = internalPopoverList;
+        } else if (dragState.sourceContainer && internalPopoverList.contains(dragState.sourceContainer)) {
+            // Ou si l'élément glissé provenait du popover
+            popoverListContainer = internalPopoverList;
+        } else if (dragState.element && internalPopoverList.contains(dragState.element)) {
+            // Ou si l'élément lui-même est dans le popover (cas limite)
+             popoverListContainer = internalPopoverList;
+        }
     }
   }
 
@@ -217,10 +222,13 @@ async function handleFolderConversationDragEnd(e: MouseEvent): Promise<void> {
       operationSuccess = await executeDrop(dragState);
       
       if (operationSuccess) {
-          if (droppedInPopover && popoverListContainer) {
+          console.log("[DragDrop:Folder] Opération réussie.");
+          if (popoverListContainer) {
+            console.log("[DragDrop:Folder] Rafraîchissement du popover folder list.");
             await renderFolders(popoverListContainer);
           } else {
-            await renderFolders();
+            console.log("[DragDrop:Folder] Pas de conteneur de popover pertinent trouvé, renderFolders non appelé.");
+            // Auparavant: await renderFolders(); // Supprimé car plus de sidebar
           }
       }
     } catch (error) {

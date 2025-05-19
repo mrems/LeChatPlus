@@ -39,30 +39,24 @@ export function initStandaloneConversationsDragAndDrop(): void {
  * Initialise les écouteurs d'événements sur les conversations existantes
  */
 function initConversationItems(): void {
-  // Sélectionner toutes les conversations autonomes (qui ne sont pas dans un dossier)
-  const foldersList = document.querySelector('#le-chat-plus-folders-list');
-  if (!foldersList) return;
+  // Sélectionner tous les éléments .le-chat-plus-conversation-item potentiels
+  const allPotentialStandaloneItems = document.querySelectorAll('.le-chat-plus-conversation-item');
   
-  // Méthode 1: Conversations qui sont enfants directs du foldersList
-  let conversationItems = Array.from(foldersList.children)
-    .filter(child => 
-      child.classList && 
-      child.classList.contains('le-chat-plus-conversation-item') &&
-      !child.closest('.le-chat-plus-folder-item'));
-  
-  // Si aucun élément n'est trouvé, essayer une méthode alternative
-  if (conversationItems.length === 0) {
-    // Méthode 2: Tous les éléments conversation-item qui ne sont pas dans un folder-item
-    conversationItems = Array.from(document.querySelectorAll('.le-chat-plus-conversation-item'))
-      .filter(item => !item.closest('.le-chat-plus-folder-item'));
+  // Filtrer pour ne garder que les vraies conversations autonomes non encore initialisées
+  const standaloneConversationItems = Array.from(allPotentialStandaloneItems).filter(item => {
+    // Si déjà initialisé, on ne le refait pas
+    if (item.getAttribute('data-drag-initialized') === 'true') {
+      return false;
+    }
+    // Doit ne pas être dans un dossier
+    return !item.closest('.le-chat-plus-folder-item');
+  });
+
+  if (standaloneConversationItems.length > 0) {
+    console.log(`[DragDrop:Standalone] Initialisation de ${standaloneConversationItems.length} nouvelle(s) conversation(s) autonome(s)`);
   }
   
-  console.log(`[DragDrop:Standalone] Détection de ${conversationItems.length} conversations autonomes`);
-  
-  // Éviter de configurer plusieurs fois les mêmes éléments
-  conversationItems.forEach(item => {
-    if (item.getAttribute('data-drag-initialized') === 'true') return;
-    
+  standaloneConversationItems.forEach(item => {
     item.setAttribute('data-drag-initialized', 'true');
     
     // Désactiver explicitement le comportement de drag natif du navigateur
@@ -118,6 +112,9 @@ function handleStandaloneConversationDragStart(e: MouseEvent, element: HTMLEleme
   if ((e.target as HTMLElement).getAttribute('contenteditable') === 'true') {
     return;
   }
+
+  // Empêcher le comportement par défaut du navigateur IMMÉDIATEMENT
+  e.preventDefault();
   
   console.log("[DragDrop:Standalone] Mousedown sur conversation autonome:", element.getAttribute('data-conversation-id'));
   
@@ -198,7 +195,7 @@ function handleStandaloneConversationDragMove(e: MouseEvent): void {
  * Gère la fin du glisser pour une conversation autonome
  */
 async function handleStandaloneConversationDragEnd(e: MouseEvent): Promise<void> {
-  console.log("[DragDrop:Standalone] Mouse up, isDragging =", dragState.isDragging, "draggedConversationId =", dragState.elementId);
+  console.log("[DragDrop:Standalone] Mouse up. Drag state:", JSON.stringify(dragState));
 
   // Nettoyer les écouteurs globaux immédiatement
   if (mouseMoveHandler) window.removeEventListener('mousemove', mouseMoveHandler);
@@ -224,17 +221,49 @@ async function handleStandaloneConversationDragEnd(e: MouseEvent): Promise<void>
     let operationSuccess = false;
     try {
       // Appeler le gestionnaire centralisé
+      console.log("[DragDrop:Standalone] Avant executeDrop. Drag state:", JSON.stringify(dragState));
       operationSuccess = await executeDrop(dragState);
+      console.log("[DragDrop:Standalone] Après executeDrop. operationSuccess:", operationSuccess);
       
       // Si une opération a réussi, rafraîchir l'UI
       if (operationSuccess) {
-          console.log("[DragDrop:Standalone] Opération réussie, rafraîchissement de l'UI.");
-          await renderFolders(); 
+          console.log("[DragDrop:Standalone] Opération réussie, tentative de rafraîchissement de l'UI.");
+          
+          let targetRenderContainer: HTMLElement | undefined | null = undefined; // Initialiser à undefined ou null
+          const folderActionsPopover = document.getElementById('le-chat-plus-folder-actions-popover');
+          const popoverListContainer = document.getElementById('le-chat-plus-folder-popover-list-container');
+
+          if (folderActionsPopover && folderActionsPopover.style.display !== 'none' && popoverListContainer) {
+            if (dragState.potentialDropTarget && 
+                dragState.potentialDropTarget.element && 
+                folderActionsPopover.contains(dragState.potentialDropTarget.element)) {
+              console.log("[DragDrop:Standalone] Le popover des actions de dossier est ouvert et la cible est dedans, rendu dans le popover.");
+              targetRenderContainer = popoverListContainer;
+            } else if ((!dragState.potentialDropTarget || !dragState.potentialDropTarget.element) && dragState.potentialDropTarget.type === 'rootArea') {
+              // Cas où l'on dépose sur la rootArea du popover lui-même
+              if (dragState.potentialDropTarget.element === popoverListContainer) {
+                console.log("[DragDrop:Standalone] Le popover des actions de dossier est ouvert, rendu dans le popover (cible rootArea du popover).");
+                targetRenderContainer = popoverListContainer;
+              }
+            }
+          }
+          
+          if (targetRenderContainer) {
+            console.log("[DragDrop:Standalone] Appel de renderFolders avec targetRenderContainer:", targetRenderContainer.id);
+            await renderFolders(targetRenderContainer);
+          } else {
+            console.log("[DragDrop:Standalone] Pas de targetRenderContainer pertinent pour le popover, renderFolders n'est pas appelé.");
+            // Auparavant: await renderFolders(); // Supprimé car il n'y a plus de sidebar à rendre par défaut
+          }
+          console.log("[DragDrop:Standalone] Fin de la logique de rafraîchissement UI.");
+      } else {
+          console.log("[DragDrop:Standalone] Opération NON réussie (operationSuccess est false), pas de rafraîchissement UI.");
       }
     } catch (error) {
-      console.error("[DragDrop:Standalone] Erreur lors de l'exécution du drop:", error);
+      console.error("[DragDrop:Standalone] Erreur lors de l'exécution du drop ou du rendu:", error);
       operationSuccess = false; // S'assurer que c'est false en cas d'erreur
     } finally {
+        console.log("[DragDrop:Standalone] Bloc finally. operationSuccess:", operationSuccess);
         // Gérer l'animation de fin (retour ou succès)
         if (!operationSuccess && dragState.dragIndicator) {
              // Animation de retour si échec ou pas de cible valide trouvée par executeDrop implicitement

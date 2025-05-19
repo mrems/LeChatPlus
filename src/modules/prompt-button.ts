@@ -177,7 +177,6 @@ async function showFolderActionsPopover(folderButton: HTMLElement): Promise<void
         await createFolder(folderName.trim()); // APPEL EXPLICITE ICI
         await renderFolders(folderListContainer); // Rafraîchir la liste dans le popover
         await updateActiveConversationHighlight();
-        await updateToggleVisuals(); // Mettre à jour l'état du bouton Ouvrir/Fermer tout
       } catch (error) {
         console.error("Erreur lors de la création du dossier:", error);
         // Gérer l'erreur, peut-être afficher une notification à l'utilisateur
@@ -185,29 +184,6 @@ async function showFolderActionsPopover(folderButton: HTMLElement): Promise<void
     }
   };
   headerButtonsContainer.appendChild(addButton);
-
-  // Bouton Tout Ouvrir/Fermer
-  const toggleButton = document.createElement('button');
-  const iconOpen = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="19 9 12 2 5 9"></polyline></svg>`;
-  const iconClosed = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 12 16 19 9"></polyline></svg>`;
-  
-  const updateToggleVisuals = async () => {
-    const folders = await getFolders();
-    const anyOpen = folders.some(f => f.expanded);
-    toggleButton.innerHTML = anyOpen ? iconOpen : iconClosed;
-    toggleButton.title = anyOpen ? 'Tout Fermer' : 'Tout Ouvrir';
-  };
-  styleBoutonPopover(toggleButton, isDark);
-  await updateToggleVisuals(); // État initial
-
-  toggleButton.onclick = async () => {
-    const folders = await getFolders();
-    const anyOpen = folders.some(f => f.expanded);
-    if (anyOpen) await collapseAllFolders(); else await expandAllFolders();
-    await renderFolders(folderListContainer);
-    await updateToggleVisuals();
-  };
-  headerButtonsContainer.appendChild(toggleButton);
 
   popover.insertBefore(popoverHeaderControls, popover.firstChild); // Insérer l'en-tête en haut
   // Supprimer l'ancien titre qui était directement dans le popover
